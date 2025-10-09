@@ -10,11 +10,7 @@ book:
     - exponencial.qmd
     - gamma.qmd
     - beta.qmd
-    #- weibull.qmd tarea
     - normal.qmd
-    #- ji_cuadrada.qmd 25 de septiembre
-    #- dist_t.qmd 30 de septiembre
-    #- dist_f.qmd 30 de septiembre
     - binomial_negativa.qmd
     - poisson.qmd
     - TCL.qmd
@@ -38,5 +34,6 @@ format:
     fig-align: "center"
 
   
+
 
 
