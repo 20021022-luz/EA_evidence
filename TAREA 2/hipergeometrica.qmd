@@ -1,0 +1,154 @@
+---
+title: "Distribución Hipergeométrica"
+lang: es
+---
+
+```{=html}
+<style>
+main.content {
+text-align: justify}
+</style>
+```
+
+```{r}
+library(ggplot2)
+```
+
+Esta distribución de probabilidad surge en el contexto de la toma de una muestra de un conjunto de objetos de dos tipos.
+
+\
+*Supongamos que tenemos N objetos dentro de una caja, de los cuales K son de un primer tipo y (N - K) son de un segundo tipo.*
+
+*Los objetos del primer tipo pueden corresponder a artículos en buen estado y los del segundo tipo artículos en mal estado, o bien a personas con una cierta característica y a aquellas que no poseen dicha característica.*
+
+![](images/Captura de pantalla 2025-10-09 142041.png){fig-align="center"}
+
+Supongamos que de esta caja tomamos al azar una muestra de tamaño **n** de tal forma que la selección es sin reemplazo y el orden de los objetos seleccionados no es relevante. Así, el espacio muestral de este experimento consiste de todos los posibles subconjuntos de tamaño **n** que se pueden obtener de esta colección de N objetos y su cardinalidad es entonces:\
+
+$$\binom{N}{n}$$
+
+*Si para cada subconjunto seleccionado se define la variable aleatoria **X** como el número de objetos seleccionados que son del primer tipo, entonces es claro que **X** puede tomar los valores {0,1,2,. . . ,n}.*
+
+*La variable X toma el valor n únicamente cuando todos los elementos seleccionados pertenecen al tipo 1; en cambio, asume el valor 0 cuando todos los elementos escogidos son del tipo 2. Para que estos casos sean posibles y facilitar el análisis, supondremos que el tamaño de la muestra n es lo suficientemente pequeño en relación con la población total, de modo que dichas situaciones pueden ocurrir con mayor probabilidad.*
+
+$$
+n <= mín (K, N - K).
+$$
+
+La probabilidad de que **X** tome un valor *x* está dada por la siguiente expresión.
+
+$$
+f(x) =
+\begin{cases}
+\dfrac{\binom{K}{x} \, \binom{N-K}{n-x}}{\binom{N}{n}}, & \text{si } x = 0, 1, \ldots, n, \\
+0, & \text{en otro caso.}
+\end{cases}
+$$ Decimos entonces que **X** tiene una distribución hipergeometrica con parámetros de *N, K* y *n,* y escribimos *X \~* hipergeo (*N,K,n).*
+
+Para entender la fórmula de la función de probabilidad de esta distribución observe que el término $\binom{N}{n}$ establece las diferentes formas en que *x* objetos pueden escogerse de la colección de *K* objetos del tipo 1, mientras que el término $\binom{N - K}{n-x}$ corresponde a las diferentes formas de escoger *n - x* objetos de los *N- K* objetos del tipo 2. Se usa entonces el principio multiplicativo para obtener el número total de muestras diferentes, en donde *x* objetos son el primer tipo y *n - x* objetos son del segundo tipo.
+
+La gráfica de esta función de probabilidad de *N = 20, K = 7 Y n = 5.*
+
+| *X* | *f(x)*    |
+|-----|-----------|
+| 0   | 0.0830108 |
+| 1   | 0.3228199 |
+| 2   | 0.3873839 |
+| 3   | 0.1760836 |
+| 4   | 0.0293472 |
+| 5   | 0.0013544 |
+
+```{r}
+ejemplo_1 <- data.frame(
+  x = c(0, 1, 2, 3, 4, 5),
+  f_x= c(0.0830108, 0.3228199,  0.3873839, 0.1760836,  0.0293472, 0.0013544)
+)
+
+ggplot(ejemplo_1, aes(x = x, y = f_x)) +
+  geom_point(size = 3) +
+  geom_segment(aes(x = x, xend = x, y = 0, yend = f_x), linetype = "dotted") +
+  labs(x = "x", y = "f(x)") +
+  theme_minimal()
+```
+
+Aplicando directamente la definición de esperanza, no es complicado comprobar que si *X* tiene distribución hipergeo (*N, K, n)* entonces
+
+a\) $$E(X) = n (\frac KN)$$
+
+b\) $$\text{Var}(X) = n \frac{K}{N} \frac{N - K}{N} \frac{N - n}{N - 1}$$
+
+## Ejemplos
+
+::: {Ejemplo_1}
+
+Demuestre que la función de probabilidad de la distribución hipergeométrica efectivamente es una función de probabilidad.
+
+### Muestra_1
+
+¿Como demuestro que funciona mi formula?
+
+i)P(X = k) ≥ 0 es evidente porque los coeficientes binomiales son ≥ 0
+
+ii\) La suma de casos favorables entre todos los posibles coincide con el número total de subconjuntos de *n* elementos a partir de *N* posibles, por lo tanto suma 1
+
+```{r}
+# Parámetros de la distribución Hipergeométrica: N=52, K=4, n=5
+N <- 52 # Población total
+K <- 4  # Éxitos en la población 
+n <- 5  # Tamaño de la muestra 
+
+# Rango de valores posibles para X 
+x_min <- max(0, n - (N - K))
+x_max <- min(n, K)
+x_valores <- x_min:x_max
+
+probabilidades <- dhyper(x_valores, K, N - K, n)
+
+
+print(probabilidades)
+
+# Suma de las probabilidades (debe ser 1)
+suma_total <- sum(probabilidades)
+print(paste("La suma de las probabilidades es:", suma_total))
+
+es_funcion_probabilidad <- isTRUE(all.equal(suma_total, 1))
+print(paste("¿La suma es aproximadamente 1?", es_funcion_probabilidad))
+```
+
+:::
+
+::: {Ejemplo_2}
+Sea *X* una variable alateoria con distribución hipergeo *(N, K, n).* Demuestre que:
+
+a\) $E(X) = n (\frac KN)$
+
+b\) $\text{Var}(X) = n \frac{K}{N} \frac{N - K}{N} \frac{N - n}{N - 1}$
+
+```{r}
+#Utilizando mis datos anteriores 
+E_teorica <- n * (K / N)
+print(paste("Esperanza Teórica (E(X)):", E_teorica))
+
+
+E_calculada <- sum(x_valores * probabilidades)
+print(paste("Esperanza Calculada (sum x*P(X=x)):", E_calculada))
+
+# Verificación
+es_esperanza_correcta <- isTRUE(all.equal(E_teorica, E_calculada))
+print(paste("¿La Esperanza es correcta?", es_esperanza_correcta))
+
+
+FPCF <- (N - n) / (N - 1)
+Var_teorica <- n * (K / N) * ((N - K) / N) * FPCF
+print(paste("Varianza Teórica (Var(X)):", Var_teorica))
+
+E_X_cuadrado <- sum((x_valores^2) * probabilidades)
+Var_calculada <- E_X_cuadrado - (E_calculada^2)
+print(paste("Varianza Calculada (sum x^2*P(X=x) - E(X)^2):", Var_calculada))
+
+# Verificación
+es_varianza_correcta <- isTRUE(all.equal(Var_teorica, Var_calculada))
+print(paste("¿La Varianza es correcta?", es_varianza_correcta))
+```
+
+:::
