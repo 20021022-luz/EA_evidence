@@ -1,0 +1,253 @@
+---
+title: "Aplicación de un modelo econométrico para predecir la proporción de estudiantes de secundaria de la entidad educativa privada Valverde y Téllez que obtendrán su carta de buena conducta"
+author: 
+- "Martinez Espinosa Jessica Jeanette"
+- "Pacheco Almaraz Heidi Idali"
+- "Soto Rodriguez Luz Elvira"
+format: html
+editor: visual
+lang: es
+---
+
+```{=html}
+<style>
+main.content {
+text-align: justify}
+</style>
+```
+
+```{r}
+#| code-fold: true
+#| label: setup
+#| include: false
+
+library(readxl)
+library(dplyr)
+library(pROC)
+library(caret)
+library(margins)
+library(logistf)
+```
+
+## INTRODUCCIÓN
+
+La transición de nivel básico a nivel media superior es un punto decisivo para cualquier estudiante, es por ello que resulta importante la carta de buena conducta en la aplicación y selección de una institución media superior, así como su promedio, por supuesto.
+
+Dentro del estado de Guanajuato, el **INEGI** (Instituto Nacional de Estadística y Geografía) como la **SEG** (Secretaria Educativa de Guanajuato) han identificado una baja dentro de el porcentaje de estudiantes que egresan de la secundaria y los que solicitan un lugar dentro del sistema media superior: "para el ciclo escolar 2022, la **Tasa de Absorción a Nivel Media Superior** en Guanajuato fue de 91.9%". Es decir, alrededor de 92 de cada 100 egresados de secundaria, ingresan a una preparatoria.
+
+La institución educativa privada **Valverde y Téllez**, ubicada en la ciudad de León, Guanajuato, enfrenta el desafío de preparar a sus estudiantes con un perfil conductual atractivo para acceder a sus opciones preferentes de preparatoria de manera satisfactoria.
+
+Por ello, para fines de este proyecto hemos extraído su base de datos que incluye: calificaciones de la primera mitad del **año escolar (2025-2026A)** de los estudiantes del tercer año de secundaria y su calificación de conducta.
+
+Con dicha información, se pretende aplicar un modelo econométrico que permita predecir la cantidad de estudiantes que tendrán una carta de buena conducta, considerando como variables explicativas la calificación en cada asignatura y la variable dependiente su conducta.
+
+### HIPÓTESIS
+
+Si se aplica un modelo econométrico para predecir la proporción de estudiantes del tercer año de secundaria de la entidad educativa privada Valverde y Téllez que tendrán una carta de buena conducta, podemos identificar los factores académicos que lo permitan.
+
+### OBJETIVO
+
+**Objetivo General:** Aplicar un modelo econométrico para predecir el porcentaje de estudiantes de tercer año de secundaria de la institución Valverde y Téllez que tendrán una carta de buena conducta.
+
+**Objetivos Específicos:**
+
+-   Formular un modelo econométrico con base en los datos de la institución educativa Valverde y Téllez.
+
+-   Analizar los resultados obtenidos y discutir los factores académicos y conductuales que determinan la obtención de una carta de buena conducta.
+
+## MARCO TEÓRICO
+
+::: {#def-regresion}
+El **análisis de regresión** estudia la dependencia entre una variable dependiente respecto de una o más variables explicativas para poder estimar o predecir la media poblacional de la variable dependiente en términos de valores conocidos en muestras repetidas de la variable explicativa.
+
+*Análisis de regresión simple o con dos variables:* Estudio de la dependencia de una variable respecto de una única variable explicativa.
+
+$$
+Y = \beta_0 + \beta_1X_1 + \upsilon
+$$
+
+*Análisis de regresión múltiple:* Estudio de la dependencia de una variable respecto de más de una variable explicativa.
+
+$$
+Y = \beta_0 + \beta_1X_1 + \beta_2X_2 + \beta_3X_3 + ... + \beta_nX_n + \upsilon
+$$
+:::
+
+::: {#def-modelo-logit}
+El **modelo logit** es un modelo de regresión utilizado para explicar relaciones causales entre una variable dependiente categórica y otras variables independientes categóricas o cuantitativas. Se puede predecir la probabilidad de que ocurra un hallazgo en función de las variables relevantes.
+
+$$y_i = X_i\beta + \upsilon_i$$ Donde $Y$ solo toma valores de $[0,1]$.
+:::
+
+::: {#def-curva-roc}
+La **curva ROC** (Receiver Operating Characteristic) representa $1-especificidad$ frente a la $sensibilidad$ para cada posible valor umbral o punto de corte en la escala de resultado del modelo. Muestra la relación entre la tasa de verdaderos positivos y la tasa de falsos positivos del modelo.
+:::
+
+::: {#def-matriz-confusion}
+La **matriz de confusión** es un método de evaluación de un modelo de clasificación. Es decir, en ella se muestra las predicciones positivas y negativas realizadas por el modelo comparado con los valores reales.
+
+-   *Exactitud (Acurracy):* Porcentaje de predicciones que clasifica correctamente.
+-   *Tasa de error (Misclassification Rate):* Porcentaje de predicciones que clasifica incorrectamente.
+-   *Sensibilidad (Recall):* Porcentaje que logra clasificar cuando la clase es positiva.
+-   *Especificidad (Specificity):* Porcentaje que logra clasificar cuando la clase es negativa.
+:::
+
+## METODOLOGÍA
+
+Este proyecto tiene un enfoque aplicado y cuantitativo, utilizamos datos proporcionados por la institución educativa privada Valverde y Téllez del grupo de tercer año de secundaria.
+
+El modelo econométrico considera a la variable dependiente como la conducta y a las variables explicativas como las calificaciones en cada asignatura. Así pues se busca predecir la proporción de estudiantes que obtendrán una carta de buena conducta.
+
+**Base de Datos**
+
+```{r}
+#| label: datos
+
+# Cargar datos 
+data <- read_xlsx("C:/Users/kelip/OneDrive/Documentos/data_calif.xlsx")
+
+# Renombrar columnas
+colnames(data) <- c("NL", "Estudiante", "Español", "Artes", "Ingles",
+                    "Matematicas", "Quimica", "Civica_Etica", "Historia", 
+                    "Educacion_Fisica", "Tecnologias", "Promedio", "Conducta")
+
+# Crear la variable de Conducta binaria 
+data$Buena_Conducta <- ifelse(data$Conducta == "BUENA", 1, 0)
+
+head(data)
+```
+
+**Obtener Proporción**
+
+```{r}
+#| label: probabilidades
+
+n_muestras <- nrow(data)
+n_buena_conducta <- sum(data$Buena_Conducta)
+p_observada <- n_buena_conducta / n_muestras
+cat("Número total de estudiantes:", n_muestras, "\n")
+cat("El número de estudiantes con buena conducta es:", n_buena_conducta, "\n")
+cat("La proporción observada de estudiantes con buena conducta es:", 
+    round(p_observada * 100, 2), "%\n")
+```
+
+**Modelo de Regresión Logistica**
+
+```{r}
+#| label: modelo_logit
+#| warning: false
+
+# Tenemos problemas con separación completa por ello usamos logistf
+
+model_logit_firth <- logistf(Buena_Conducta ~ Español + Artes + Ingles 
+                             + Matematicas + Quimica + Civica_Etica + Historia + 
+                               Educacion_Fisica + Tecnologias, data = data)
+summary(model_logit_firth)
+```
+
+```{r}
+momios <- exp(coefficients(model_logit_firth))
+
+# Crear función
+probability <- function(momio){
+  return (momio / (1 + momio))
+}
+
+p <- probability(momios)
+p
+```
+
+```{r}
+#| label: probabilidades_predichas_conducta
+
+data$Probabilidad_Ingreso <- predict(model_logit_firth, type = "response")
+head(data[, c("Estudiante", "Buena_Conducta", "Probabilidad_Ingreso")])
+```
+
+**Curva ROC**
+
+```{r}
+#| label: curva_roc
+
+X <- data[, c("Español","Artes","Ingles", "Matematicas", "Quimica", "Civica_Etica", 
+              "Historia", "Educacion_Fisica", "Tecnologias")]
+
+y_hat <- predict(model_logit_firth, X, type = "response")
+y_hat[1]
+
+head(X)
+```
+
+```{r}
+#| label: curva_roc_grafica
+#| fig-cap: "Curva ROC del modelo logit aplicado a la predicción de buena conducta"
+#| fig-width: 10
+#| fig-align: center
+
+roc(data$Buena_Conducta, y_hat, plot = TRUE, legacy.axes = TRUE, percent = TRUE, 
+    xlab = "Tasa de Falsos Positivos (%)", 
+    ylab = "Tasa de Verdaderos Positivos (%)", 
+    col = "blue", lwd = 4, print.auc = TRUE)
+```
+
+**Matriz de confusión**
+
+```{r}
+#| label: matriz_confusion
+
+y_hat_p <- ifelse(y_hat > 0.5, 1, 0)
+
+data$Buena_Conducta_Factor <- factor(data$Buena_Conducta, levels = c(0,1))
+y_hat_p_factor <- factor(y_hat_p, levels = c(0,1))
+
+confusionMatrix(y_hat_p_factor, data$Buena_Conducta_Factor)
+```
+
+## RESULTADOS
+
+El modelo logit que hemos aplicado a nuestra base de datos, en un inicio mostró problemas de separabilidad completa en las variables predictoras, por esa razón, optamos por utilizar una regresión logística penalizada. Esta última nos mostró que las variables más significativas en nuestro modelo son:
+
+-   Cívica y Ética
+-   Artes
+-   Español
+-   Tecnologías
+
+Pues tienen un coeficiente positivo y son grandes en comparación con las demás asignaturas.
+
+Si bien el modelo no mostró un buen ajuste por las variables que en su conjunto si presentan un efecto sobre la conducta pero no son las más exactas para predecir la buena conducta. Sin embargo, la calificación en las asignaturas antes mencionadas si genera una alta en buena conducta.
+
+Por otro lado, la materia como historia muestra un coeficiente negativo, esto nos dice que no es muy influyente sobre la carta de buena conducta.
+
+En la curva ROC pudimos observar una área bajo la curva del 100%, esto va de la mano con la situación de separabilidad y colinealidad de las variables, sin embargo, con variables más predictoras de la buena conducta, el modelo es capaz de distinguir entre los estudiantes que obtendrán la carta de buena conducta.
+
+En definitiva, el modelo logístico que empleamos nos permitió identificar qué asignaturas influyen en el comportamiento de los estudiantes. Esto pues abre la puerta para preguntarse la forma en que estas materias que, hasta cierto punto son casi iguales en áreas, intervienen en la conducta y sobre todo, pues permite crear intervenciones por parte de la Institución Educativa destinadas a mejorar las conducta de los alumnos en base a esas asignaturas.
+
+Sin embargo, nuestro modelo también sufrió limitaciones en la base de datos por el número de muestras, separabilidad y colinealidad de las variables, lo que limitó nuestro ajuste y capacidad predictiva. Por lo que de esto rescatamos la necesidad de recolectar datos que sean más significativos en la conducta, como por ejemplo, las asistencias o reportes escolares.
+
+## CONCLUSIONES
+
+En un principio, cuando decidimos recolectar estos datos teníamos muy claro que las calificaciones si tenían influencia sobre la conducta, pensábamos que calificaciones malas eran igual a una mala conducta. No obstante, la experiencia que tuvimos con este modelo econométrico nos dejó en claro que si bien no son lejanas de influir, pues no son las más significativas. Así como puedes tener las mejores calificaciones también puedes obtener una carta de mala conducta, o viceversa, si tienes calificaciones no tan satisfactorias puedes obtener una carta de buena conducta.
+
+Por otro lado, fue posible también visualizar que las asignaturas de humanidades como civica y ética, artes y español son las que más influyen en la conducta de los estudiantes, lo que nos lleva a pensar que el fomento de las habilidades socioemocionales y los valores morales/éticos ejercen un impacto mucho mayor en el comportamiento de los estudiantes que las asignaturas puramente académicas, como las matemáticas.
+
+Estos aspectos socioemocionales y cambios biológicos por los que atraviesan los jóvenes estudiantes, proporcionan una base para predecir la conducta y el aprendizaje de cada uno con relación a la familia, la escuela, su imagen de si mismo y su capacidad para resolver problemas. Dentro de la familia, la comunicación entre padres e hijos y el apoyo emocional recibido influyen significativamente en los resultados del aprendizaje. Los aspecto conductuales pueden evaluarse a través de las relaciones con los maestros, las interacciones con su grupo, si sufren algún tipo de acoso escolar, las situaciones de disciplina y la satisfacción que sienten con su escuela.
+
+Nosotras concluimos que el modelo logit es una muy buena herramienta para predecir este tipo de cuestiones, sin embargo, es necesario formular una buena base de datos. Por ejemplo, nos dimos cuenta que si hubiésemos tenido una base de datos históricos, es decir, de varios años escolares anteriores, muy probablemente no tendríamos limitaciones de ajuste y podríamos predecir con mayor confiabilidad nuestro modelo sin sesgos.
+
+Asimismo, recomendamos a la institución educativa Valverde y Téllez que implemente estrategias enfocadas en mejorar el desempeño en las asignaturas de cívica y ética, artes y español, ya que estas tienen un impacto significativo en la conducta de los estudiantes.
+
+Y nos recomendamos a nosotras, buscar variables que sean más significativas en el comportamiento de los estudiantes, es decir, que influyen más satisfactoriamente en la buena o malaconducta para nuevamente intentar este modelo y ver si podemos obtener mejores resultados.
+
+## REFERENCIAS
+
+-   SIIE - indicadores. (s/f). Gob.Mx. Recuperado el 31 de octubre de 2025, de https://www.seg.guanajuato.gob.mx/SIIE/SitePages/Indicadores.aspx?indicador=adp
+
+-   (S/f). Juventudesgto.com. Recuperado el 31 de octubre de 2025, de https://atencion.juventudesgto.com/public/documentos_municipios/47/DataMayo15-10.pdf
+
+-   Gujarati, D. N., & Porter, D. C. (2009). Econometría básica (5a ed.). McGraw-Hill.
+
+-   RPubs - Modelo logit en R. (s.f.). https://rpubs.com/orlandoan/887367
+
+-   Curva ROC. (s.f.). MathWorks: https://la.mathworks.com/discovery/roc-curve.html
+
+-   RPubs - Matriz de Confusión - Evaluación de modelos de predicción. (s.f.). https://rpubs.com/chzelada/275494
