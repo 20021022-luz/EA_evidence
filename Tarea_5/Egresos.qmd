@@ -1,0 +1,715 @@
+---
+title: "Análisis Estadístico de las Finanzas Públicas Estatales en México  Egresos"
+subtitle: "Clasificación por Objeto del Gasto (COG) según EFIPEM 2013-2023"
+autor: Elvira SR
+format: 
+  html:
+    grid: 
+      body-width: 1000px
+editor: visual
+---
+
+```{=html}
+<style>
+main.content {
+text-align: justify}
+</style>
+```
+
+```{r}
+#| code-fold: true
+#| message: false
+#| warning: false
+
+library(tidyverse)
+library(RColorBrewer)
+library(sf)          # Para datos espaciales
+library(viridis)     # Para paletas de colores
+library(DT)
+library(plotly)
+library(knitr)
+library(kableExtra)
+library(corrplot)
+library(broom)
+library(scales)
+library(ggplot2)
+library(multcomp)
+```
+
+# Introducción
+
+El examen de los **gastos realizados** por los estados es fundamental para determinar cómo se están distribuyendo los fondos públicos, qué *prioridades* se están estableciendo en las políticas de gobierno y cuál es la solidez financiera de las administraciones estatales para pagar por servicios esenciales y obras de infraestructura.
+
+***¿Por qué es importante analizar el Gasto Estatal?***
+
+Analizar a fondo la composición del desembolso estatal nos permite identificar varios aspectos cruciales:
+
+-   **Desequilibrios y Disparidades:** Revela si existen distribuciones inadecuadas o desproporcionadas en el gasto entre diferentes áreas.
+
+-   **Rigideces Presupuestarias**: Ayuda a detectar compromisos de gasto que son difíciles de modificar (como nóminas o deuda), limitando la flexibilidad para invertir en nuevas iniciativas.
+
+-   **Oportunidades de Eficiencia**: Señala dónde se puede mejorar la efectividad y el óptimo aprovechamiento de los recursos disponibles, asegurando que cada peso gastado genere el mayor beneficio para la ciudadanía.
+
+En esencia, al comprender la estructura de los egresos, podemos evaluar la calidad del gasto y proponer medidas para hacerlo más eficiente, equitativo y alineado con las necesidades de la población.
+
+## Estructura
+
+```{r}
+# Crear el data frame con la estructura del gasto
+estructura_gasto <- data.frame(
+  Categoria_Principal = c(
+    "Gasto Corriente", "Gasto Corriente", "Gasto Corriente", "Gasto Corriente",
+    "Gasto de Capital", "Gasto de Capital", "Gasto de Capital",
+    "Resto de Egresos", "Resto de Egresos", "Resto de Egresos"
+  ),
+  Concepto = c(
+    "Sueldos y salarios",
+    "Materiales y suministros",
+    "Servicios generales",
+    "Transferencias corrientes",
+    "Inversión pública",
+    "Adquisición de activos",
+    "Infraestructura",
+    "Servicio de la deuda",
+    "Participaciones y otros pasivos",
+    "Variaciones en disponibles"
+  )
+)
+
+# Imprimir el data frame para verificar
+print(estructura_gasto)
+```
+
+## Cargar datos
+
+```{r}
+#| code-fold: true
+#| message: false
+#| warning: false
+
+data_sets <- list.files("./conjunto_de_datos", pattern = "*.csv", full.names = TRUE)
+
+# Se combinan en un df
+datos <- data_sets |>
+  set_names(nm = data_sets) |>
+  map_dfr(read_csv, .id = "source_file")
+
+# Convertimos variables de caracter a factor
+datos_factor <- datos |>
+  dplyr::select(where(is.character)) |>
+  names()
+
+datos <- datos |>
+  mutate(across(all_of(datos_factor), as_factor))
+
+datos <- datos |> mutate(ANIO_factor = as_factor(ANIO), VALOR_millones = VALOR / 1e6)
+datos <- datos |> rename(CVE_ENT = ID_ENTIDAD)
+
+# Cargamos datos de estados y unimos con el conjunto de datos principal
+datos_estado <- read_csv("tc_entidad.csv")
+datos_estado <- datos_estado |> mutate(across(everything(), as_factor))
+datos_estado$ZONA <- factor(datos_estado$ZONA, levels = c("NORTE", "CENTRO", "SUR"))
+
+datos <- left_join(datos, datos_estado)
+
+# Eliminar columnas no necesarias
+datos <- datos |> dplyr::select(-source_file, -PROD_EST, -COBERTURA, -ESTATUS) 
+
+nacional_estado <- st_read("data_nacional/00ent.shp", options = "ENCODING=LATIN1", quiet = TRUE)
+nacional_estado <- left_join(nacional_estado, datos_estado, by = "CVE_ENT")
+
+cat("Años disponibles:", paste(unique(datos$ANIO_factor), collapse = ", "), "\n")
+cat("Entidades incluidas:", length(unique(datos$CVE_ENT)), "\n")
+cat("Temas:", paste(unique(datos$TEMA), collapse = ", "), "\n")
+cat("Categorías:", paste(unique(datos$CATEGORIA), collapse = ", "), "\n\n")
+
+```
+
+## Vista Rápida a la Estructura de Egresos por Capítulo de Gasto.
+
+### Estructura General de los Datos
+
+-   **`Egresos`**: Filtrado para el tema "Egresos" y categoría "Capítulo". Se agrega porcentaje anual de cada capítulo.
+-   **`Egresos_agregados`**: Agregado por año, estado y categoría principal con cálculos de porcentaje anual.
+-   **`Egresos_wide`**: Transformado a formato ancho con valores y porcentajes por categoría principal.
+
+```{r}
+#| code-fold: true
+
+egresos <- datos |> filter(TEMA == "Egresos", CATEGORIA == "Capítulo")
+
+egresos <- egresos |> 
+  mutate(
+    CATEGORIA_PRINCIPAL = case_when(
+      str_detect(DESCRIPCION_CATEGORIA, "Servicios personales|Materiales|Servicios generales|Gasto corriente") ~ "Corriente",
+      
+      # Gasto de Capital 
+      str_detect(DESCRIPCION_CATEGORIA, "Bienes muebles|Inversión pública|Inversión financiera|Gasto de capital") ~ "Capital",
+      # Servicio de la Deuda
+      str_detect(DESCRIPCION_CATEGORIA, "Deuda pública|Servicio de la deuda") ~ "Servicio de la deuda",
+      # Transferencias y otros 
+      str_detect(DESCRIPCION_CATEGORIA, "Transferencias|Participaciones|Otros egresos") ~ "Resto/Transferencias",
+      
+      # Para cualquier categoría no prevista
+      TRUE ~ "Otros"
+    ),
+    
+    # Convertimos a factor con orden específico
+    CATEGORIA_PRINCIPAL = factor(CATEGORIA_PRINCIPAL, 
+                         levels = c("Corriente", "Capital", "Servicio de la deuda", "Resto/Transferencias", "Otros"))
+  )
+# Agregar datos por ANIO, Estado y CATEGORIA_PRINCIPAL con porcentajes
+egresos_agregados <- egresos |> 
+  group_by(ANIO, CVE_ENT, NOM_ENT, ABR_ENT, ZONA, CATEGORIA_PRINCIPAL, ANIO_factor) |> 
+  summarise(
+    VALOR = sum(VALOR, na.rm = TRUE),
+    VALOR_millones = sum(VALOR_millones, na.rm = TRUE),
+    .groups = "drop"
+  ) |> 
+  group_by(ANIO, CVE_ENT, NOM_ENT) |> 
+  mutate(
+    total_estado_anio = sum(VALOR_millones, na.rm = TRUE),
+    porcentaje_anual = (VALOR_millones / total_estado_anio) * 100
+  ) |> 
+  ungroup() |> 
+  dplyr::select(ANIO, CVE_ENT, VALOR, ANIO_factor, VALOR_millones, porcentaje_anual, NOM_ENT, ABR_ENT, ZONA, CATEGORIA_PRINCIPAL)
+
+egresos_wide <- egresos_agregados %>%
+  mutate(
+    # normaliza nombres de categorías para evitar espacios y diagonales raros
+    CATEGORIA_PRINCIPAL = str_replace_all(CATEGORIA_PRINCIPAL, "[ /]", "_")
+  ) %>%
+  pivot_wider(
+    names_from = CATEGORIA_PRINCIPAL,
+    values_from = c(VALOR_millones, porcentaje_anual),
+    names_sep = "_"
+  ) %>%
+  janitor::clean_names()
+ 
+cols_keep <- intersect(c(
+  "ANIO", "CVE_ENT", "ANIO_factor", "NOM_ENT", "ABR_ENT", "ZONA",
+  "Corriente_valor", "Corriente_porcentaje",
+  "Capital_valor", "Capital_porcentaje",
+  "Servicio de la deuda_valor", "Servicio de la deuda_porcentaje",
+  "Resto_valor", "Resto_porcentaje"
+), names(egresos_wide))
+
+if(length(cols_keep) > 0){
+  egresos_wide <- egresos_wide |> dplyr::select(all_of(cols_keep))
+}
+
+
+cat("Capítulos presentes: ", ifelse("DESCRIPCION_CATEGORIA" %in% names(egresos), paste(levels(egresos$DESCRIPCION_CATEGORIA), collapse = ", \n"), "(campo DESCRIPCION_CATEGORIA no presente)"), "\n")
+
+# Tabla resumen
+resumen_estructura <- egresos |> group_by(TEMA, CATEGORIA, ABR_ENT) |> 
+  summarise(
+    registros = n(),
+    valor_total = sum(VALOR, na.rm = TRUE)/ 1e9,  # En miles de millones
+    .groups = "drop"
+  ) |> 
+  arrange(TEMA, CATEGORIA, ABR_ENT)
+
+kable(resumen_estructura, 
+      col.names = c("Tema", "Categoría", "Entidad", "Registros", "Total (Miles Mill. MXN)"),
+      digits = 2,
+      caption = "Estructura General de Egresos EFIPEM 2014-2023") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+```
+
+#### Mapa de Agregado de Egresos por Estado (2013-2023)
+
+```{r}
+#| code-fold: true
+#| fig-width: 8
+#| fig-height: 6
+#| fig-align: "center"
+
+agregado_mapa <- resumen_estructura |> 
+  dplyr::select(ABR_ENT, valor_total)
+agregado_mapa <- left_join(nacional_estado, agregado_mapa, by = "ABR_ENT")
+
+mapa <- ggplot(agregado_mapa) +
+  geom_sf(aes(fill=valor_total), color = "gray50", size = 0.5) +
+  labs(
+    title = "Egresos totales por estado (2013-2023)",
+    subtitle = "Valores en miles de millones de MXN",
+    caption = "Fuente: INEGI - Finanzas Públicas",
+    fill = " "
+  ) +
+  scale_fill_distiller(palette = "Blues", direction = 1, labels = comma)
+  #scale_fill_viridis_c(labels = comma) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10)
+  )
+  
+  
+print(mapa)
+```
+  Podemos notar una gran diferencia de resultados (una mayor variabilidad), dejando de lado a la CDMX. Objeto que sirve en su generalidad para este analisis.
+  
+```{r}
+#| code-fold: true
+#| fig-width: 8
+#| fig-height: 6
+#| fig-align: "center"
+
+mapa <- ggplot(agregado_mapa |> filter(ABR_ENT != "MEX")) +
+  geom_sf(aes(fill=valor_total), color = "gray50", size = 0.5) +
+  labs(
+    title = "Egresos totales por estado (2013-2023)",
+    subtitle = "Valores en miles de millones de MXN",
+    caption = "Fuente: INEGI - Finanzas Públicas",
+    fill = " "
+  ) +
+  scale_fill_distiller(palette = "Blues", direction = 1, labels = comma)
+  #scale_fill_viridis_c(labels = comma) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10)
+  )
+  
+print(mapa)
+```  
+#### Composición de Egresos por Estado (2013-2023)
+
+```{r}
+#| code-fold: true
+#| fig-width: 10
+#| fig-height: 10
+#| fig-align: "center"
+
+porcentajes_categoria_estado <- egresos |> 
+  group_by(NOM_ENT, ABR_ENT, DESCRIPCION_CATEGORIA) |> 
+  summarise(valor_categoria = sum(VALOR_millones, na.rm = TRUE), .groups = "drop") |> 
+  group_by(NOM_ENT, ABR_ENT) |> 
+  mutate(
+    total_estado = sum(valor_categoria),
+    porcentaje = (valor_categoria / total_estado) * 100
+  ) %>%
+  ungroup()
+
+graf_bar <- porcentajes_categoria_estado |> 
+  mutate(etiqueta = ifelse(porcentaje >= 1, 
+                          paste0(round(porcentaje, 1), "%"), 
+                          "")) |> 
+  ggplot(aes(x = reorder(ABR_ENT, total_estado), 
+             y = porcentaje, 
+             fill = DESCRIPCION_CATEGORIA)) +
+  geom_col(position = "stack") +
+  geom_text(aes(label = etiqueta), 
+            position = position_stack(vjust = 0.5),
+            size = 4, 
+            color = "white",
+            fontface = "bold") +
+  coord_flip() +
+  scale_fill_viridis_d(option = "turbo") +
+  labs(
+    title = "Composición de Egresos por Estado",
+    subtitle = "Porcentaje por categoría (etiquetas >5%)",
+    x = "Estado",
+    y = "Porcentaje (%)",
+    fill = "Categoría"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    legend.position = "bottom",
+    legend.text = element_text(size = 10),
+    axis.title.x = element_text(size = 12),
+    axis.title.y = element_text(size = 12),
+    axis.text.x = element_text(size = 11),
+    axis.text.y = element_text(size = 11)
+  ) +
+  guides(fill = guide_legend(nrow = 3, byrow = TRUE))
+
+graf_bar
+```
+###  Mapa gasto de capital por estado (2013-2023)
+
+```{r}
+#| code-fold: true
+#| fig-width: 8
+#| fig-height: 6
+#| fig-align: "center"
+
+aportaciones_mapa_corregido <- egresos_agregados |> 
+  filter(CATEGORIA_PRINCIPAL == "Capital", 
+         ABR_ENT != "MEX") |>
+  group_by(CVE_ENT, ABR_ENT) |> 
+  summarise(
+    valor_total_capital = sum(VALOR_millones, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+aportaciones_mapa <- left_join(nacional_estado, aportaciones_mapa_corregido, by = "CVE_ENT")
+
+
+mapa_aportaciones <- ggplot(aportaciones_mapa) +
+  geom_sf(aes(fill=valor_total_capital), color = "white", size = 0.5) +
+  labs(
+    title = "Gasto de capital en Egresos Totales (2013-2023)",
+    subtitle = "En millones de MXN (Sin el Estado de México)",
+    caption = "Fuente: INEGI - Finanzas Públicas",
+    fill = "Gasto de capital (Millones)"
+  ) +
+  scale_fill_distiller(palette = "YlGnBu", direction = 1, labels = comma)
+  #scale_fill_viridis_c(labels = scales::comma) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10)
+  )
+
+mapa_aportaciones
+```
+
+```{r}
+#| code-fold: true
+#| fig-width: 8
+#| fig-height: 6
+#| fig-align: "center"
+
+porcentaje_capital_mapa <- egresos_agregados |>
+  group_by(CVE_ENT, NOM_ENT) |>
+  summarise(
+    total_egresos_periodo = sum(VALOR_millones, na.rm = TRUE),
+    total_capital_periodo = sum(VALOR_millones[CATEGORIA_PRINCIPAL == "Capital"], na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  mutate(
+    porcentaje_capital_total = (total_capital_periodo / total_egresos_periodo) * 100
+  )
+
+aportaciones_mapa <- left_join(nacional_estado, porcentaje_capital_mapa, by = "CVE_ENT")
+
+
+mapa_aportaciones <- ggplot(aportaciones_mapa) +
+  geom_sf(aes(fill=porcentaje_capital_total), color = "gray50", size = 0.5) +
+  labs(
+    title = "Gasto de capital en Egresos Totales (2013-2023)",
+    subtitle = "Porcentaje del total de egresos (Periodo completo)",
+    caption = "Fuente: INEGI - Finanzas Públicas",
+    fill = "Gasto de capital (%)"
+  ) +
+  scale_fill_distiller(palette = "YlGnBu", direction = 1, labels = comma)
+  #scale_fill_viridis_c(labels = scales::percent_format(scale = 1)) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(size = 10)
+  )
+
+mapa_aportaciones
+```
+#### Egresos por Categoría Principal (2013-2023)
+
+```{r}
+#| code-fold: true
+
+tabla_resumen_principal <- egresos |> 
+  group_by(CATEGORIA_PRINCIPAL) |> 
+  summarise(
+    valor_millones = sum(VALOR_millones, na.rm = TRUE),
+    .groups = "drop"
+  ) |> 
+  mutate(
+    porcentaje = (valor_millones / sum(valor_millones)) * 100,
+    valor_billones = valor_millones / 1000000
+  ) |> 
+  arrange(desc(valor_millones))
+
+# Mostrar tabla formateada
+tabla_resumen_principal %>%
+  mutate(
+    `Valor (Millones MXN)` = format(round(valor_millones, 0), big.mark = ",", scientific = FALSE),
+    `Valor (Billones MXN)` = format(round(valor_billones, 2), nsmall = 2),
+    `Porcentaje (%)` = format(round(porcentaje, 1), nsmall = 1)
+  ) %>%
+  dplyr::select(
+    `Categoría Principal` = CATEGORIA_PRINCIPAL,
+    `Valor (Millones MXN)`,
+    `Valor (Billones MXN)`,
+    `Porcentaje (%)`
+  ) %>%
+  kable(
+    caption = "Egresos Estatales por Categoría Principal (2014-2023)",
+    align = c("l", "r", "r", "r")
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+    full_width = FALSE,
+    font_size = 12
+  ) %>%
+  add_header_above(c(" " = 1, "Valores Absolutos" = 2, "Relativo" = 1))
+
+
+```
+
+## Tendencias Temporales por Categoría Principal
+
+A continuación, se presentan las tendencias temporales de los egresos estatales desglosados por categoría principal para el periodo 2013-2023.
+
+::: {panel-tabset}
+### Gasto Corriente
+
+```{r}
+#| code-fold: true
+
+egresos_tendencia <- egresos_agregados |> 
+  group_by(ANIO, CATEGORIA_PRINCIPAL) |> 
+  summarise(
+    valor_total = sum(VALOR_millones, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+ggplot(egresos_tendencia, aes(x = ANIO, y = valor_total, color = CATEGORIA_PRINCIPAL)) +
+  geom_line(size = 1.3) +
+  geom_point(size = 2) +
+  scale_color_viridis_d(option = "turbo") +
+  scale_y_continuous(labels = scales::comma) +
+  labs(
+    title = "Tendencia temporal de egresos estatales por categoría principal (2013-2023)",
+    subtitle = "Valores agregados a nivel nacional",
+    x = "Año",
+    y = "Millones de pesos (MXN)",
+    color = "Categoría"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    legend.position = "bottom"
+  )
+
+```
+:::
+
+
+## Composición de Egresos
+
+::: {panel-tabset}
+### Guanajuato
+
+```{r}
+#| code-fold: true
+#| fig-width: 10
+#| fig-height: 7
+#| fig-align: "center"
+  
+ggplot(egresos_agregados |> filter(ABR_ENT =="GTO"), aes(x = ANIO_factor, y =porcentaje_anual,
+       fill = CATEGORIA_PRINCIPAL)) +
+  geom_col(position = "stack") +
+  geom_text(aes(label = ifelse(porcentaje_anual >= 5, paste0(round(porcentaje_anual, 1), "%"), "")), 
+            position = position_stack(vjust = 0.5),
+            size = 4, 
+            color = "white",
+            fontface = "bold") +
+  coord_flip() +
+  scale_fill_viridis_d(option = "turbo") +
+  labs(
+    title = "Composición de Egresos de Guanajuato (2013-2023)",
+    subtitle = "Porcentaje por categoría (etiquetas >5%)",
+    x = "Año",
+    y = "Porcentaje (%)",
+    fill = "Categoría"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    legend.position = "bottom",
+    legend.text = element_text(size = 10),
+    axis.title.x = element_text(size = 12),
+    axis.title.y = element_text(size = 12),
+    axis.text.x = element_text(size = 11),
+    axis.text.y = element_text(size = 11)
+  ) +
+  guides(fill = guide_legend(nrow = 3, byrow = TRUE))
+
+```
+### Zacatecas 
+
+```{r}
+#| code-fold: true
+#| fig-width: 10
+#| fig-height: 7
+#| fig-align: "center"
+
+ggplot(egresos_agregados |> filter(ABR_ENT =="ZAC"), aes(x = ANIO_factor, y =porcentaje_anual,
+       fill = CATEGORIA_PRINCIPAL)) +
+  geom_col(position = "stack") +
+  geom_text(aes(label = ifelse(porcentaje_anual >= 5, paste0(round(porcentaje_anual, 1), "%"), "")), 
+            position = position_stack(vjust = 0.5),
+            size = 4, 
+            color = "white",
+            fontface = "bold") +
+  coord_flip() +
+  scale_fill_viridis_d(option = "turbo") +
+  labs(
+    title = "Composición de Egresos de Zacatecas (2013-2023)",
+    subtitle = "Porcentaje por categoría (etiquetas >5%)",
+    x = "Año",
+    y = "Porcentaje (%)",
+    fill = "Categoría"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    legend.position = "bottom",
+    legend.text = element_text(size = 10),
+    axis.title.x = element_text(size = 12),
+    axis.title.y = element_text(size = 12),
+    axis.text.x = element_text(size = 11),
+    axis.text.y = element_text(size = 11)
+  ) +
+  guides(fill = guide_legend(nrow = 3, byrow = TRUE))
+
+
+```
+
+### Veracruz 
+
+```{r}
+#| code-fold: true
+#| fig-width: 10
+#| fig-height: 7
+#| fig-align: "center"
+
+ggplot(egresos_agregados |> filter(ABR_ENT =="VER"), aes(x = ANIO_factor, y =porcentaje_anual,
+       fill = CATEGORIA_PRINCIPAL)) +
+  geom_col(position = "stack") +
+  geom_text(aes(label = ifelse(porcentaje_anual >= 5, paste0(round(porcentaje_anual, 1), "%"), "")), 
+            position = position_stack(vjust = 0.5),
+            size = 4, 
+            color = "white",
+            fontface = "bold") +
+  coord_flip() +
+  scale_fill_viridis_d(option = "turbo") +
+  labs(
+    title = "Composición de Egresos de Veracruz de Ignacio de la Llave (2013-2023)",
+    subtitle = "Porcentaje por categoría (etiquetas >5%)",
+    x = "Año",
+    y = "Porcentaje (%)",
+    fill = "Categoría"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    legend.position = "bottom",
+    legend.text = element_text(size = 10),
+    axis.title.x = element_text(size = 12),
+    axis.title.y = element_text(size = 12),
+    axis.text.x = element_text(size = 11),
+    axis.text.y = element_text(size = 11)
+  ) +
+  guides(fill = guide_legend(nrow = 3, byrow = TRUE))
+
+
+```
+### Chiapas 
+
+```{r}
+#| code-fold: true
+#| fig-width: 10
+#| fig-height: 7
+#| fig-align: "center"
+
+ggplot(egresos_agregados |> filter(ABR_ENT =="CHIS"), aes(x = ANIO_factor, y =porcentaje_anual,
+       fill = CATEGORIA_PRINCIPAL)) +
+  geom_col(position = "stack") +
+  geom_text(aes(label = ifelse(porcentaje_anual >= 5, paste0(round(porcentaje_anual, 1), "%"), "")), 
+            position = position_stack(vjust = 0.5),
+            size = 4, 
+            color = "white",
+            fontface = "bold") +
+  coord_flip() +
+  scale_fill_viridis_d(option = "turbo") +
+  labs(
+    title = "Composición de Egresos de Chiapas (2013-2023)",
+    subtitle = "Porcentaje por categoría (etiquetas >5%)",
+    x = "Año",
+    y = "Porcentaje (%)",
+    fill = "Categoría"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    legend.position = "bottom",
+    legend.text = element_text(size = 10),
+    axis.title.x = element_text(size = 12),
+    axis.title.y = element_text(size = 12),
+    axis.text.x = element_text(size = 11),
+    axis.text.y = element_text(size = 11)
+  ) +
+  guides(fill = guide_legend(nrow = 3, byrow = TRUE))
+
+
+```
+:::
+
+## Gasto de Capital
+
+Se realizará un examen pormenorizado del *gasto de capital*, destacándolo como un elemento crucial de los egresos gubernamentales en las entidades federativas mexicanas entre 2013 y 2023. Para comenzar, se ilustrará la **distribución anual** de los porcentajes de esta categoría en cada estado mediante diagramas de caja.
+
+```{r}
+#| code-fold: true
+#| fig-width: 10
+#| fig-height: 7
+#| fig-align: "center"
+
+ggplot(egresos_agregados |> filter(CATEGORIA_PRINCIPAL =="Capital"), aes(x = reorder(ABR_ENT, porcentaje_anual, FUN = mean), y =porcentaje_anual,
+       fill = ABR_ENT)) +
+  geom_boxplot() +
+  scale_fill_viridis_d(option = "turbo") +
+  labs(
+    title = "Distribución del Gasto de Capital como Porcentaje de Egresos Totales (2013-2023)",
+    subtitle = "Porcentaje por estado",
+    x = "Estado",
+    y = "Porcentaje (%)",
+    fill = "Estado"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    legend.position = "none",
+    axis.title.x = element_text(size = 12),
+    axis.title.y = element_text(size = 12),
+    axis.text.x = element_text(size = 11),
+    axis.text.y = element_text(size = 11)
+  )
+
+
+```
+### Prueba ANOVA
+
+Se lleva a cabo un Análisis de Varianza (ANOVA) con el fin de evaluar la existencia de disparidades significativas en el promedio de los porcentajes anuales correspondientes a esta categoría.
+
+```{r}
+#| code-fold: true
+#| fig-width: 12
+#| fig-height: 6
+#| fig-align: "center"
+
+af_estado_aov <- aov(porcentaje_anual ~ ABR_ENT, data = egresos_agregados |> filter(CATEGORIA_PRINCIPAL =="Capital"))
+
+cat("Resumen del Análisis de Varianza (ANOVA):\n")
+print(summary(af_estado_aov))
+
+
+cat("\nPrueba Post-Hoc de Tukey para diferencias entre estados:\n")
+tukey_test <- glht(af_estado_aov, linfct = mcp(ABR_ENT = "Tukey"))
+print(summary(tukey_test))
+
+```

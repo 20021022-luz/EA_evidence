@@ -1,0 +1,438 @@
+---
+title: "Análisis Estadístico de las Finanzas Públicas Estatales en México: Ingresos"
+subtitle: "Análisis de Componentes Principales"
+format: 
+  html:
+    grid: 
+      body-width: 1000px
+editor: visual
+---
+
+```{=html}
+<style>
+main.content {
+text-align: justify}
+</style>
+```
+
+```{r}
+#| code-fold: true
+#| message: false
+#| warning: false
+
+library(tidyverse)
+library(RColorBrewer)
+library(sf)          # Para datos espaciales
+library(viridis)     # Para paletas de colores
+library(DT)
+library(plotly)
+library(knitr)
+library(kableExtra)
+library(corrplot)
+library(broom)
+library(scales)
+library(multcomp)
+
+
+library(factoextra)
+library(FactoMineR)
+```
+
+# Introducción
+
+Previamente se hizo una descripción dgeneralde laos ingresos de los estados de México utilizando los datos de EFIPEM. En este análisis, nos enfocaremos en desglosar los ingresos por capítulos encontrando las componentes principales, que son proyecciones ortogonales sobre el espacio vectorial generado por los datos. Para este propósito es necesario contar con los datos por amplitud, es decir, cada capítulo (ya sea en MXN o porcentaje) debe corresponder a una columna.
+
+## Estructura General de los Datos
+
+-   Dataset `ingresos`: Filtrado para el tema "Ingresos" y categoría "Capítulo". Se agrega porcentaje anual de cada capítulo.
+-   Dataset `ingresos_agregados`: Agregado por año, estado y categoría principal con cálculos de porcentaje anual.
+-   Dataset `ingresos_wide`: Transformado a formato ancho con valores y porcentajes por categoría principal.
+
+Consideramos los datos de finanzas públicas de los estados de México, disponibles en varios archivos CSV dentro de la carpeta "conjunto_de_datos". No se consideran los valores de la Ciudad de México.
+
+```{r}
+#| code-fold: true
+#| message: false
+#| warning: false
+
+
+# Se identifican los archivos CSV en el directorio especificado
+data_sets <- list.files("./conjunto_de_datos", pattern = "*.csv", full.names = TRUE)
+
+# Se leen y combinan los archivos CSV en un solo data frame
+datos <- data_sets |> 
+  set_names(nm = data_sets) |> 
+  map_dfr(read_csv, .id = "source_file")
+
+# Convertir variables de tipo character a factor
+datos_factor <- datos |> 
+  dplyr::select(where(is.character)) |> 
+  names()
+
+datos <- datos |> 
+  mutate(across(all_of(datos_factor), as_factor))
+
+# Crear variables adicionales
+datos <- datos |> mutate(ANIO_factor = as_factor(ANIO), VALOR_millones = VALOR / 1e6)
+datos <- datos |> rename(CVE_ENT = ID_ENTIDAD)
+
+# Cargar datos de estados y unir con el conjunto de datos principal
+datos_estado <- read_csv("tc_entidad.csv")
+datos_estado <- datos_estado |> mutate(across(everything(), as_factor))
+datos_estado$ZONA <- factor(datos_estado$ZONA, levels = c("NORTE", "CENTRO", "SUR"))
+
+datos <- left_join(datos, datos_estado)
+
+# Eliminar columnas no necesarias
+datos <- datos |> dplyr::select(-source_file, -PROD_EST, -COBERTURA, -ESTATUS) 
+
+
+#glimpse(datos)
+
+nacional_estado <- st_read("data_nacional/00ent.shp", options = "ENCODING=LATIN1", quiet = TRUE)
+nacional_estado <- left_join(nacional_estado, datos_estado, by = "CVE_ENT")
+
+
+ingresos <- datos |> filter(TEMA == "Ingresos", CATEGORIA == "Capítulo")
+
+# Agregar porcentaje anual al dataset original
+ingresos <- ingresos |> 
+  group_by(ANIO, CVE_ENT, NOM_ENT) |> 
+  mutate(
+    valor_estado_anio = sum(VALOR_millones, na.rm = TRUE),
+    porcentaje_anual = (VALOR_millones / valor_estado_anio) * 100
+  ) |> 
+  ungroup()
+
+
+niveles_categoria <- c("Aportaciones federales", "Participaciones federales", "Financiamiento", "Impuestos", "Derechos",  "Aprovechamientos", "Productos", "Contribuciones de Mejoras",  "Disponibilidad inicial", "Cuotas y Aportaciones de Seguridad Social", "Otros ingresos")
+
+ingresos$DESCRIPCION_CATEGORIA <- factor(ingresos$DESCRIPCION_CATEGORIA, levels = niveles_categoria)
+
+# Agregar columna de categorías principales
+ingresos <- ingresos |> 
+  mutate(
+    CATEGORIA_PRINCIPAL = case_when(
+      # Ingresos Propios
+      DESCRIPCION_CATEGORIA %in% c("Impuestos", "Derechos", "Productos", 
+                                   "Aprovechamientos", "Contribuciones de Mejoras") ~ "Propios",
+      
+      # Participaciones Federales
+      DESCRIPCION_CATEGORIA == "Participaciones federales" ~ "Participaciones Federales",
+      
+      # Aportaciones Federales
+      DESCRIPCION_CATEGORIA == "Aportaciones federales" ~ "Aportaciones Federales",
+      
+      # Resto
+      DESCRIPCION_CATEGORIA %in% c("Financiamiento", "Disponibilidad inicial", 
+                                   "Otros ingresos",
+                                   "Cuotas y Aportaciones de Seguridad Social") ~ "Resto",
+      
+      # Para cualquier categoría no prevista
+      TRUE ~ "Otros"
+    ),
+    
+    # Convertir a factor con orden específico
+    CATEGORIA_PRINCIPAL = factor(CATEGORIA_PRINCIPAL, 
+                                levels = c("Propios", "Participaciones Federales", 
+                                          "Aportaciones Federales", "Resto"))
+  )
+
+
+
+
+# Agregar datos por ANIO, Estado y CATEGORIA_PRINCIPAL con porcentajes
+ingresos_agregados <- ingresos |> 
+  group_by(ANIO, CVE_ENT, NOM_ENT, ABR_ENT, ZONA, CATEGORIA_PRINCIPAL, ANIO_factor) |> 
+  summarise(
+    VALOR = sum(VALOR, na.rm = TRUE),
+    VALOR_millones = sum(VALOR_millones, na.rm = TRUE),
+    .groups = "drop"
+  ) |> 
+  # Calcular porcentaje por estado y año
+  group_by(ANIO, CVE_ENT, NOM_ENT) |> 
+  mutate(
+    valor_estado_anio = sum(VALOR_millones, na.rm = TRUE),
+    porcentaje_anual = (VALOR_millones / valor_estado_anio) * 100
+  ) |> 
+  ungroup() |> 
+  # Reordenar columnas para mantener estructura similar
+  dplyr::select(
+    ANIO,
+    CVE_ENT, 
+    VALOR,
+    ANIO_factor,
+    VALOR_millones,
+    porcentaje_anual,
+    NOM_ENT,
+    ABR_ENT,
+    ZONA,
+    CATEGORIA_PRINCIPAL
+  )
+
+
+# Transformar a formato ancho con valor y porcentaje por categoría
+ingresos_wide <- ingresos_agregados |> 
+  dplyr::select(ANIO, CVE_ENT, ANIO_factor, NOM_ENT, ABR_ENT, ZONA, 
+         CATEGORIA_PRINCIPAL, VALOR_millones, porcentaje_anual) |> 
+  pivot_wider(
+    names_from = CATEGORIA_PRINCIPAL,
+    values_from = c(VALOR_millones, porcentaje_anual),
+    names_sep = "_"
+  ) |> 
+  rename_with(
+    ~ case_when(
+      .x == "VALOR_millones_Propios" ~ "Propios_valor",
+      .x == "porcentaje_anual_Propios" ~ "Propios_porcentaje",
+      .x == "VALOR_millones_Participaciones Federales" ~ "Participaciones_Federales_valor",
+      .x == "porcentaje_anual_Participaciones Federales" ~ "Participaciones_Federales_porcentaje",
+      .x == "VALOR_millones_Aportaciones Federales" ~ "Aportaciones_Federales_valor",
+      .x == "porcentaje_anual_Aportaciones Federales" ~ "Aportaciones_Federales_porcentaje",
+      .x == "VALOR_millones_Resto" ~ "Resto_valor",
+      .x == "porcentaje_anual_Resto" ~ "Resto_porcentaje",
+      TRUE ~ .x
+    )
+  ) |> 
+  # Reemplazar NA con 0 donde sea apropiado
+  mutate(
+    across(contains("_valor"), ~ replace_na(.x, 0)),
+    across(contains("_porcentaje"), ~ replace_na(.x, 0))
+  ) |> 
+  # Reordenar columnas
+  dplyr::select(
+    ANIO, CVE_ENT, ANIO_factor, NOM_ENT, ABR_ENT, ZONA,
+    Propios_valor, Propios_porcentaje,
+    Participaciones_Federales_valor, Participaciones_Federales_porcentaje,
+    Aportaciones_Federales_valor, Aportaciones_Federales_porcentaje,
+    Resto_valor, Resto_porcentaje
+  )
+
+```
+
+Se seleccionan las variables numéricas para el análisis de componentes principales (PCA). En este caso, se utilizan los valores en millones de pesos y los respectivos porcentajes en conjuntos de datos separados.
+
+```{r}
+#| code-fold: true
+
+
+ingresos_wo_MEX <- ingresos_wide |> filter(ABR_ENT != "MEX")
+
+
+ingresos_numeric_valor <- ingresos_wo_MEX |> 
+  dplyr::select(
+    Propios_valor,
+    Participaciones_Federales_valor,
+    Aportaciones_Federales_valor,
+    Resto_valor
+  )
+
+
+
+
+ingresos_numeric_porcentaje <- ingresos_wide |> 
+  dplyr::select(
+    Propios_porcentaje,
+    Participaciones_Federales_porcentaje,
+    Aportaciones_Federales_porcentaje,
+    Resto_porcentaje
+  )
+```
+
+# PCA en valores (millones de pesos)
+
+:::: panel-tabset
+## Eigenvalores y varianzas
+
+```{r}
+#| code-fold: true
+
+PC_valor <- prcomp(ingresos_numeric_valor, scale.=TRUE, center=TRUE)
+
+eig_valor <- get_eigenvalue(PC_valor)
+eig_tabla <- data.frame(PC=paste0("PC",1:dim(eig_valor)[1]), 
+                        Eigenvalor=round(eig_valor$eigenvalue,3), 
+                        Varianza=round(eig_valor$variance.percent,2), 
+                        Var_acu=round(eig_valor$cumulative.variance.percent,2))
+
+kable(eig_tabla, align = "c", col.names = c("Componente", "Eigenvalor", "% varianza", "% varianza acumulada")) %>% kable_styling(c("striped", "hover"), full_width = F)%>% scroll_box(width="100%", height="300px", fixed_thead = TRUE)
+```
+
+## Scree plot
+
+```{r}
+#| code-fold: true
+#| warning: false
+
+fviz_eig(PC_valor, addlabels = TRUE)
+```
+
+## Coeficientes (Loadings)
+
+```{r}
+#| code-fold: true
+PC_coef <-data.frame(PC_valor$rotation)
+kable(PC_coef, align = "c") %>% kable_styling(c("striped", "hover"), full_width = F)%>% scroll_box(width="100%", height="300px", fixed_thead = TRUE)
+```
+
+## Contribución variables
+
+```{r}
+#| code-fold: true
+#| warning: false
+
+fviz_pca_var(PC_valor, col.var = "contrib", gradient.cols=c("#1627dc", "#ffb600", "#ff2e16"))
+```
+
+## Contribución PC1
+
+```{r}
+#| code-fold: true
+fviz_contrib(PC_valor, "var", axes = 1)
+```
+
+## Contribución PC2
+
+```{r}
+#| code-fold: true
+fviz_contrib(PC_valor, "var", axes = 2)
+```
+
+## Proyecciones
+
+::: panel-tabset
+### Biplot
+
+```{r}
+#| code-fold: true
+fviz_pca_biplot(PC_valor,
+                geom.ind = "point",
+                fill.ind = ingresos_wo_MEX$ABR_ENT,
+                pointshape = 21 ,
+                pointsize = 2,
+                alpha.ind=0.6,
+                col.var = "black",
+                mean.point = FALSE,
+                #palette= ,
+                label= "var",
+                repel = TRUE   
+  )
+```
+
+### Proyección
+
+```{r}
+#| code-fold: true
+proy_scores <- fviz_pca_ind(PC_valor,
+             pointsize = 2,
+             habillage = ingresos_wo_MEX$ABR_ENT,
+             mean.point = FALSE,
+             #addEllipses = TRUE,
+             label= "var",
+            repel = TRUE 
+  )
+
+ggplotly(proy_scores)
+
+```
+:::
+::::
+
+# PCA en porcentajes
+
+:::: panel-tabset
+## Eigenvalores y varianzas
+
+```{r}
+#| code-fold: true
+
+PC_porcentaje <- prcomp(ingresos_numeric_porcentaje, scale.=TRUE, center=TRUE)
+
+eig_porcentaje <- get_eigenvalue(PC_porcentaje)
+eig_tabla <- data.frame(PC=paste0("PC",1:dim(eig_porcentaje)[1]), 
+                        Eigenvalor=round(eig_porcentaje$eigenvalue,3), 
+                        Varianza=round(eig_porcentaje$variance.percent,2), 
+                        Var_acu=round(eig_porcentaje$cumulative.variance.percent,2))
+
+kable(eig_tabla, align = "c", col.names = c("Componente", "Eigenvalor", "% varianza", "% varianza acumulada")) %>% kable_styling(c("striped", "hover"), full_width = F)%>% scroll_box(width="100%", height="300px", fixed_thead = TRUE)
+```
+
+## Scree plot
+
+```{r}
+#| code-fold: true
+#| warning: false
+
+fviz_eig(PC_porcentaje, addlabels = TRUE)
+```
+
+## Coeficientes (Loadings)
+
+```{r}
+#| code-fold: true
+PC_coef <-data.frame(PC_porcentaje$rotation)
+kable(PC_coef, align = "c") %>% kable_styling(c("striped", "hover"), full_width = F)%>% scroll_box(width="100%", height="300px", fixed_thead = TRUE)
+```
+
+## Contribución variables
+
+```{r}
+#| code-fold: true
+#| warning: false
+
+fviz_pca_var(PC_porcentaje, col.var = "contrib", gradient.cols=c("#1627dc", "#ffb600", "#ff2e16"))
+```
+
+## Contribución PC1
+
+```{r}
+#| code-fold: true
+fviz_contrib(PC_porcentaje, "var", axes = 1)
+```
+
+## Contribución PC2
+
+```{r}
+#| code-fold: true
+fviz_contrib(PC_porcentaje, "var", axes = 2)
+```
+
+## Proyecciones
+
+::: panel-tabset
+### Biplot
+
+```{r}
+#| code-fold: true
+fviz_pca_biplot(PC_porcentaje,
+                geom.ind = "point",
+                fill.ind = ingresos_wide$ABR_ENT,
+                pointshape = 21 ,
+                pointsize = 2,
+                alpha.ind=0.6,
+                col.var = "black",
+                mean.point = FALSE,
+                #palette= ,
+                label= "var",
+                repel = TRUE   
+  )
+```
+
+### Proyección
+
+```{r}
+#| code-fold: true
+#| fig-width: 8
+#| fig-height: 6
+proy_scores <- fviz_pca_ind(PC_porcentaje,
+             pointsize = 2,
+             habillage = ingresos_wide$ABR_ENT,
+             mean.point = FALSE,
+             #addEllipses = TRUE,
+             label= "var",
+            repel = TRUE 
+  )
+
+ggplotly(proy_scores)
+```
+:::
+::::
