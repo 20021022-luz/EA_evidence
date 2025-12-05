@@ -1,0 +1,1167 @@
+---
+output: pdf_document
+institute: null
+lang: es
+format:
+  pdf:
+    pdf-engine: xelatex
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    colorlinks: true
+    geometry: margin=2.5cm
+    fontsize: 11pt
+    fig-pos: H
+    include-in-header:
+      text: |
+        \usepackage{fancyhdr}
+        \pagestyle{fancy}
+        \fancyhead[L]{Econometría}
+        \fancyhead[R]{UNAM}
+subtitle: null
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+\begin{titlepage}
+\begin{center}
+
+\vspace*{3cm}
+
+{\Large UNIVERSIDAD NACIONAL AUTÓNOMA DE MÉXICO}\\[0.3cm]
+{\large ENES León | Economía Industrial}\\[4cm]
+
+% Título
+{\Huge \textbf{Análisis del Efecto}}\\[0.3cm]
+{\Huge \textbf{Día de la Semana}}\\[0.3cm]
+{\Huge \textbf{en Acciones Bursátiles}}\\[0.3cm]
+{\Huge \textbf{Tecnológicas}}\\[1.5cm]
+
+{\Large \textit{Una aplicación de Regresión Lineal}}\\
+{\Large \textit{con Variables Dummies}}\\[3cm]
+
+% Línea divisoria
+\rule{0.6\textwidth}{0.4pt}\\[1cm]
+
+% Información compacta
+\begin{tabular}{rl}
+\textbf{Curso:} & Econometría \\[0.2cm]
+\textbf{Docente:} & Mtro. Francisco Javier Pedroza Castro \\[0.2cm]
+\textbf{Estudiantes:} & Heidi Idali Pacheco Almaraz \\
+                      & Elvira Soto Rodríguez \\
+                      & Angel Adair Macías Gutiérrez \\
+\end{tabular}
+
+\vfill
+
+{\large 24 de noviembre de 2025}\\
+{\large León, Guanajuato}
+
+\end{center}
+\end{titlepage}
+\newpage
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = 'center',
+  out.width = '80%'
+)
+
+
+library(tidyverse)
+library(lubridate)
+library(broom)
+library(ggplot2)
+library(gridExtra)
+library(lmtest)
+library(sandwich)
+library(knitr)
+library(kableExtra)
+library(magrittr)
+```
+
+\newpage
+
+# Resumen
+
+En el presente documento se explica si existen anomalías o patrones de Efecto Día de la Semana en los retornos diarios de 10 acciones tecnológicas (Microsoft (MSFT), Apple (AAPL), Alphabet/Google (GOOGL), Amazon (AMZN), Meta Platforms (META), NVIDIA (NVDA), Adobe (ADBE), Salesforce (CRM), Oracle (ORCL), y Tesla (TSLA)), empresas que cotizan en el mercado estadounidense en el periodo comprendido de enero de 2020 hasta marzo de 2025. 
+
+La aplicación de un modelo de regresión lineal múltiple con variables dummies, utilizando el lunes como día de referencia, no encontró diferencias estadísticamente significativas en los retornos promedio entre los días restantes para nueve de las diez empresas analizadas. 
+Asimismo, para constatar este hallazgo se verificó mediante pruebas de heterocedasticidad, autocorrelación y el uso de errores estándar robustos (HC1). 
+
+Obteniendo como resultado que el Efecto Día de la Semana no es una anomalía generalizada en el mercado tecnológico, pues esta hipótesis sólo está confirmada para la acción de Tesla (TSLA), que presentó un retorno promedio del día Jueves (-1.07%) y el día Viernes (-0.82%) significativamente inferiores a los del día Lunes.
+
+**Palabras clave:** Efecto Día de la Semana, Regresión Múltiple, Retornos Bursátiles Tecnológicos, Regresión con Variables Dummies.
+
+# Introducción
+
+Actualmente, el mercado tecnológico está en un auge enorme en donde
+nuestra vida está yendo de la mano con una digitalización completa.
+Fenómenos como la Inteligencia Artificial, el Big Data, y el Internet de
+las cosas (IoT) están definiendo nuevamente desde industrias hasta la
+comunicación.
+
+Estos cambios significativos han puesto en la mira el mercado
+tecnológico y tanto empresas como gobierno han apostado a esta
+revolución en busca de atesorar gran parte de ese crecimiento y sobre
+todo, materializarlo en ganancias o rendimientos.
+
+Es por ello que el mercado de valores financieros tecnológicos se ha
+vuelto una de las mejores opciones para invertir, ya que, una parte muy
+importante que le interesa a la mayoría de las personas que invierten o
+buscan invertir en acciones, es el potencial de un mercado para generar
+rentabilidad.
+
+Sin embargo, dicha rentabilidad viene ligada con riesgos e incertidumbre
+y por ende, los resultados no siempre llegan a ser favorecedores o lo
+esperado.
+
+Como sabemos, parte de los riesgos en una inversión es la volatilidad
+que existe en el mercado de valores que impacta positiva o negativamente
+en la cartera. Asimismo, factores geopolíticos o bien, el contexto
+global llega a ser también un determinante en los precios de las
+acciones y causar la volatilidad antes mencionada.
+
+Es decir, no existe esa facilidad de llegar a conocer a ciencia cierta
+en qué momento es mejor llevar a cabo una inversión o que empresa te
+daría un retorno más beneficioso. Si bien, el contexto global podría ser
+un buen indicador para nuestros movimientos, no es del todo preciso para
+observar cambios significativos en los valores financieros de las
+empresas. No obstante, se puede llegar a predecir, en cierto modo,
+mediante el estudio de sus retornos en un determinado periodo de tiempo
+y observando si existen patrones entre ellos.
+
+Por lo tanto, dentro del mercado bursátil existen definiciones como el
+Efecto Día de la Semana el cual hace referencia a que la distribución de
+los retornos de un día llega a ser diferente a los otros días de la
+semana restantes. Por ejemplo: el Efecto Lunes, menciona que se espera
+que el día Lunes tenga menor rentabilidad y mayor volatilidad frente a
+los otros días, ó, el Efecto Fin de Semana, donde se espera que el día
+Viernes tenga un mayor retorno frente a los demás días.
+
+Así pues, las inversiones en el mercado de valores financieros
+tecnológicos, enfrenta el desafío de buscar el momento adecuado para
+llevar a cabo movimientos financieros.
+
+Por ello, hemos encaminado este proyecto en la extracción de los precios
+de cierre que abarca el periodo 2020-2025 de empresas tecnológicas como
+Google, Tesla, Microsoft, Meta, etcétera. Y con dicha información, se
+pretende aplicar un modelo econométrico que permita explicar el Efecto
+Día de la Semana en los retornos tecnológicos.
+
+## Hipótesis
+
+Se presenta un efecto "Día de la semana" estadísticamente significativo
+para los retornos de acciones tecnológicas, en el que al menos un día
+presenta retornos promedio significativamente diferentes al día Lunes
+(día tomado como referencia)
+
+## Objetivo general
+
+Evaluar la existencia del efecto "Día de la semana" para los retornos
+diarios de 10 acciones de empresas tecnológicas líderes durante el
+periodo 2020 - 2025, empleando modelos de regresión lineal con variables
+dummies.
+
+## Objetivos específicos
+
+-   Cuantificar los retornos promedio para cada uno de los cinco días de
+    la semana para cada acción tecnológica.
+-   Estimar modelos de regresión lineal múltiple con variables dummy
+    para poder identificar diferencias estadísticamente significativas
+    entre los días de la semana.
+-   Evaluar los resultados estadisticos con pruebas individuales.
+
+\newpage
+
+# Marco Teórico
+
+## Teoría académica previa de análisis similares
+
+-   **Efecto Día de la Semana**
+
+En el mercado de valores es muy común encontrar ciertas anomalías en la
+forma en que los precios se comportan dados diferentes factores.
+
+El Efecto Día de la Semana es una de estas definiciones y nace tras
+analizar el índice Dow Jones con datos diarios desde 1915 hasta 1930, en
+donde se pudo observar una diferencia entre la rentabilidad media que
+dejaban los días Lunes y los días Viernes frente a los demás días. El
+primero por su parte, tenía un bajo retorno y alta volatilidad, mientras
+que el segundo se caracterizaba por un mayor retorno.
+
+Para explicar este efecto se llevaron a cabo estudios con una
+metodología de regresión lineal sobre los retornos diarios y con
+variables dummies por día, como lo es el de Gibbons & Hess (1981, citado
+en Kristjanpoller y Muñoz, 2012) el cual destacó que los retornos del
+día Lunes son menores en comparación con los demás días de la semana e
+incluso estos llegan a ser negativos. Ó Rogalski (1984, citado en
+Kristjanpoller y Muñoz, 2012) quien subrayó que el Efecto Día Lunes es
+producido por el precio de cierre del día Viernes y el precio de
+apertura del día Lunes dado que es un periodo de no transacción.
+
+Por su lado, Berument y Kiymaz (2001, citado en Kristjanpoller y Muñoz,
+2012) estudiaron dicho efecto en base al retorno y volatilidad para el
+índice S&P (Standard & Poor's 500 Index) evidenciando nuevamente bajos
+retornos los días Lunes pero ahora también una alta volatilidad los días
+Viernes.
+
+## Teoría econométrica
+
+-   **Análisis de Regresión**
+
+El análisis de regresión estudia la dependencia entre una variable
+dependiente respecto de una o más variables explicativas para poder
+estimar o predecir la media poblacional de la variable dependiente en
+términos de valores conocidos en muestras repetidas de la variable
+explicativa.
+
+*Análisis de regresión simple o con dos variables:* Estudio de la
+dependencia de una variable respecto de una única variable explicativa.
+
+$$
+Y = \beta_0 + \beta_1X_1 + \upsilon
+$$
+
+*Análisis de regresión múltple:* Estudio de la dependencia de una
+variable respecto de más de una variable explicativa.
+
+$$
+Y = \beta_0 + \beta_1X_1 + \beta_2X_2 + \beta_3X_3 + ... + \beta_nX_n + \upsilon
+$$
+
+*Análisis de regresión con variables dummies:* Estudio de la dependencia
+de una variable respecto de dos o más variables explicativas dicotómicas
+o cualitativas, por naturaleza.
+
+$$
+Y_i = \beta_1 + \beta_2D_{2i} + \beta_3D_{3i} + ... + \beta_nD_{ni} + \upsilon
+$$
+
+Las variables dummies o dicotómicas representan la presencia o ausencia
+de una cualidad o atributo, por lo tanto, para cuantificar dichos
+atributos, estas variables toman los siguientes valores:
+
+\begin{equation}
+D = \begin{cases}
+1 & \text{presencia (o posesión) del atributo} \\
+0 & \text{ausencia del atributo}
+\end{cases}
+\end{equation}
+
+-   **Autocorrelación (Durbin-Watson)**
+
+La autocorrelación es la "correlación entre miembros de series de
+observaciones ordenadas en el tiempo o en el espacio" (Kendall &
+Buckland, 1971, p.8, citado en Gujarati & Porter, 2009, p.413)
+
+$$
+E(u_iu_j) \ne 0
+$$
+$$
+i \ne j
+$$
+
+Un método para detectar la correlación serial es la **Prueba d de
+Durbin-Watson**, la cual está definida como:
+
+$$
+d = \frac{\displaystyle\sum_{t=2}^{t=n}\big(\hat{u}_{t}-{\hat{u}_{t-1}\big)^{2}}}{\displaystyle\sum_{t=1}^{t=n}\hat{u}_{t}^{2}}
+$$
+
+En esta prueba no hay un valor crítico único que lleve al rechazo o no
+rechazo de la hipótesis nula $H_0$ de que no existe correlación serial
+de primer orden en las perturbaciones $u_i$. Sin embargo, existe un
+límite inferior $d_L$ y un límite superior $d_U$, los cuales permiten
+observar si existe correlación serial positiva o negativa dependiendo si
+el valor $d$ calculado cae fuera de estos valores críticos.
+
+| Hipótesis nula | Decisión | Si |
+|------------------------|------------------------|------------------------|
+| No hay autocorrelación positiva | Rechazar | $0 < d < d_L$ |
+| No hay autocorrelación positiva | Sin decisión | $d_L \leq d \leq d_U$ |
+| No hay correlación negativa | Rechazar | $4 - d_L < d < 4$ |
+| No hay correlación negativa | Sin decisión | $4 - d_U \leq d \leq 4 - d_L$ |
+| No hay autocorrelación, positiva o negativa | No rechazar | $d_U < d < 4 - d_U$ |
+
+: *Prueba d de Durbin-Watson: reglas de decisión*. 
+
+Recurso tomado de Econometría (5ta ed., p.436) por Damodar Gujarati y Dawn Porter, 2010, McGraw-Hill.
+
+-   **Heterocedasticidad (Breusch-Pagan)**
+
+El supuesto de Heterocedasticidad en un modelo nos dice que las
+varianzas de $Y_i$ no son las mismas y está representado por:
+
+$$
+E(u^2_i) = \sigma^2_i
+$$
+
+Donde $\sigma^2$ indica que las varianzas condicionales de $u_i$ (=
+varianzas condicionales de $Y_i$) ya no son constantes.
+
+Un método formal para detectar la heterocedasticidad es la **Prueba
+Breusch-Pagan**. La idea básica de esta prueba es buscar si existe una
+relación entre la varianza del error $u_i$ y un grupo de variables Z.
+
+Considerando un modelo de regresión lineal con k variables:
+
+$$
+Y_i = \beta_1 + \beta_2X_2 + ... + \beta_kX_{ki} + \upsilon_i
+$$
+
+La prueba implica las siguientes hipótesis nula (homocedasticidad) y
+alternativa:
+
+-   $H_0 : \sigma^2_i = \sigma^2$
+
+-   $H_1 : \sigma^2_i = \alpha_1 + \alpha_2Z_{2i} + ... + \alpha_mZ_{mi}$
+
+Donde al obtener el estadístico $BP = \frac{1}{2}(SCE)$ y suponiendo que
+los $u_i$ siguen una distribución normal, se demuestra que hay
+homocedasticidad, y si el tamaño $n$ de la muestra aumenta de manera
+indefinida entonces el estadístico $BP$ sigue una distribución ji
+cuadrada con $(m-1)$ grados de libertad.
+
+Por lo tanto, si $BP (= X^2)$ calculado excede al valor crítico $X^2$ en
+el nivel de significancia seleccionado, se rechaza la hipótesis de la
+homocedasticidad, por el contrario, no se rechaza.
+
+-   **Prueba F**
+
+La idea central de esta prueba es verificar a través del estadístico $F$
+si las varianzas de dos muestras o poblaciones son iguales.
+
+Considerando un modelo de regresión lineal con k variables:
+
+$$
+Y_i = \beta_1 + \beta_2X_{2i} + \beta_3X_{3i} + ... + \beta_kX_{ki} + \upsilon_i
+$$
+
+Con las siguientes hipótesis nula y alternativa:
+
+-   $H_0 : \beta_2 = \beta_3 = ... = \beta_k = 0$
+-   $H_1 :$ no todos los coeficientes de pendiente son simultáneamente
+    cero
+
+Si $F > F_\alpha(k-1, n-k)$, donde $F_\alpha(k-1, n-k)$ es el valor
+crítico F en un nivel de significancia $\alpha$, se rechaza la hipótesis
+nula $H_0$. Por el contrario, no se rechaza.
+
+-   **P-Value**
+
+Los valores p o p-value son un valor muy importante pues evalúan la evidencia contra una hipótesis nula, analizan la relación entre las variables que se están estudiando y permiten identificar aquellas variables predictoras más significativas en el análisis de regresión.
+
+Si $p-valor < 0.05$ indica un efecto estadísticamente significativo en contra de la hipótesis nula.
+
+\newpage
+
+# Metodología
+
+## Descripción de los datos
+
+### Fuente y período
+
+Los datos provienen de YahooFinance y corresponden a los precios de
+cierre diarios de **10 acciones tecnológicas** que cotizan en el mercado
+de los Estados Unidos (NASDAQ/NYSE): Microsoft (MSFT), Apple (AAPL),
+Alphabet/Google (GOOGL), Amazon (AMZN), Meta Platforms (META), NVIDIA
+(NVDA), Adobe (ADBE), Salesforce (CRM), Oracle (ORCL), y Tesla (TSLA).
+
+El periodo de análisis abarca las fechas de *trading* desde **Enero de
+2020 hasta Marzo de 2025**.
+
+### Variables del modelo
+
+```{r tabla-variables, echo=FALSE}
+variables_desc <- data.frame(
+  Variable = c("Retorno diario", "Dummies de dia"),
+  Descripcion = c(
+    "Retorno logaritmico diario del activo expresado en porcentaje",
+    "Variables binarias para Martes, Miercoles, Jueves y Viernes (día de referencia: Lunes)"
+  ),
+  Notacion = c("R(i,t)", "D(dia)"),
+  Tipo = c("Dependiente", "Independiente"),
+  stringsAsFactors = FALSE
+)
+
+kable(variables_desc,
+      booktabs = TRUE,
+      caption = "Variables del modelo econométrico",
+      col.names = c("Variable", "Descripción", "Notación", "Tipo"),
+      align = c("l", "l", "c", "c"),
+      escape = TRUE) %>%
+  kable_styling(latex_options = "hold_position", font_size = 8)
+```
+
+Definición del retorno
+
+-   El retorno logaritmico diario se calcula como:
+    $$R_{i,t} = 100 \times \ln\left(\frac{P_t}{P_{t-1}}\right)$$
+
+Donde $P_t$ es el precio de cierre ajustado en el día $t$ y $P_{t-1}$
+corresponde al precio del día anterior.
+
+## Especificación del modelo
+
+El análisis del Efecto Día de la Semana se realizará a través de un
+modelo de regresión lineal múltiple que utiliza variables del tipo dummy
+para cada uno de los días de la semana, con el día Lunes como el día de
+referencia (base).
+
+### Modelo de Regresión Lineal con Variables Dummies
+
+El modelo propuesto para el retorno logarítmico del activo $i$ en el día
+$t$ ($R_{i,t}$) es de la siguiente forma:
+
+$$
+\begin{aligned}
+R_{i,t} = &\alpha + \beta_{\text{Martes}} D_{\text{Martes}} + \beta_{\text{Miércoles}} D_{\text{Miércoles}} + \\
+&\beta_{\text{Jueves}} D_{\text{Jueves}} + \beta_{\text{Viernes}} D_{\text{Viernes}} + \varepsilon_{i,t}
+\end{aligned}
+$$
+
+Donde:
+
+-   $R_{i,t}$ es el retorno logarítmico del activo $i$ en el día $t$
+-   $\alpha$ representa el retorno promedio del Lunes (Día de
+    Referencia).
+-   $\beta_j$ representa la diferencia entre el retorno promedio del día
+    $j$ y el retorno promedio del Lunes.
+-   $D_j$ es la variable dummy que toma el valor 1 si el día es $j$
+    (Martes, Miércoles, Jueves o Viernes), y 0 en caso contrario.
+-   $\varepsilon_{i,t}$ es el término de error aleatorio que captura
+    factores no observados
+
+## Proceso de limpieza y preparación
+
+-   Se convierte la variable Fecha del formato texto (DD/MM/YYYY) a
+    formato Date a fin de poder trabajar operaciones temporales y
+    extraer los días de la semana.
+-   Se verifica si hay valores faltantes (NA).
+-   Creación de la variable "Dia de la semana"
+-   Cálculo de los retornos logarítmicos para cada acción.
+
+### Diagnósticos previos
+
+-   Se calcularon las medidas de tendencia central y dispersión (Media,
+    Mediana, Desviación Estpandar, Máximo y Mínimo)
+-   Se calcula el retorno promedio para cada una de las combinaciones de
+    acción - día de la semana
+-   Se analiza la dispersión mediante boxplots.
+-   Se verifican los supuestos del modelo
+
+\newpage
+
+# Resultados
+
+## Preparación de los datos
+
+### Carga de datos
+
+```{r carga-archivo}
+datos <- read.csv("data.csv", stringsAsFactors = FALSE)
+```
+
+### Convertir fechas de DD/MM/YYYY a formato Date
+
+```{r carga-datos}
+datos$Fecha <- dmy(datos$Fecha)
+```
+
+### Verificar si hay valores faltantes
+
+```{r valores-faltantes}
+colSums(is.na(datos))
+```
+
+### Extraer día de la semana
+
+```{r creacion-variables}
+datos$DiaSemana <- wday(datos$Fecha, label = TRUE, abbr = FALSE)
+datos$DiaSemana <- factor(datos$DiaSemana,
+                          levels = c("lunes", "martes", "miércoles", "jueves", "viernes"))
+
+# Forzando contrastes dummy
+contrasts(datos$DiaSemana) <- contr.treatment(5)
+```
+
+### Calcular rendimientos diarios para cada acción
+
+```{r creacion-variables_2}
+acciones <- c("MSFT.Close", "AAPL.Close", "GOOGL.Close", "AMZN.Close", 
+              "META.Close", "NVDA.Close", "ADBE.Close", "CRM.Close", 
+              "ORCL.Close", "TSLA.Close")
+
+datos <- datos %>% 
+  mutate(across(all_of(acciones),
+                ~ log(.x / lag(.x)) * 100,
+                .names = "{.col}_Return")) %>%
+  rename_with(~ gsub(".Close_Return", ".Return", .x),
+              ends_with("_Return"))
+```
+
+### Eliminar NA (primer día)
+
+```{r creacion-variables_3}
+datos <- datos %>% filter(!is.na(MSFT.Return))
+```
+
+## Análisis exploratorio de datos
+
+### Estadísticas descriptivas por acción
+
+```{r estadisticas-descriptivas}
+stats_acciones <- datos %>%
+  select(ends_with(".Return")) %>%
+  pivot_longer(everything(), names_to = "Accion", values_to = "Return") %>%
+  mutate(Accion = gsub(".Return", "", Accion)) %>%
+  group_by(Accion) %>%
+  summarise(
+    Media = mean(Return, na.rm = TRUE),
+    Mediana = median(Return, na.rm = TRUE),
+    Desv_Est = sd(Return, na.rm = TRUE),
+    Min = min(Return, na.rm = TRUE),
+    Max = max(Return, na.rm = TRUE)
+  ) %>%
+  arrange(desc(Desv_Est))
+
+kable(stats_acciones,
+      digits = 3,
+      caption = "Estadísticas descriptivas de rendimientos diarios (%)",
+      booktabs = TRUE,
+      col.names = c("Acción", "Media", "Mediana", "Desv. Est.", "Mínimo", "Máximo"))
+```
+
+\newpage
+
+### Headmap de Rendimientos Promedio
+
+Calcular rendimientos promedio por día y por acción
+
+```{r heatmap-rendimientos_promedio}
+rendimientos_promedio <- datos %>% 
+  select(DiaSemana, ends_with(".Return")) %>%
+  pivot_longer(cols = ends_with(".Return"),
+               names_to = "Accion",
+               values_to = "Return") %>%
+  group_by(DiaSemana, Accion) %>%
+  summarise(Return_Medio = mean(Return, na.rm = TRUE), groups = "drop") %>%
+  mutate(Accion = gsub(".Return", "", Accion))
+```
+
+```{r heatmap-rendimientos, fig.cap="Rendimiento logarítmico promedio por día de la semana y acción (2020-2025)"}
+ggplot(rendimientos_promedio, aes(x = DiaSemana, y = Accion, fill = Return_Medio)) +
+  geom_tile(color = "white")+
+  scale_fill_gradient2(low = "red", mid = "white", high = "green3",
+                       midpoint = 0, name = "Rendimiento (%)") +
+  geom_text(aes(label = round(Return_Medio, 2)), size = 3) +
+  theme_minimal() +
+  labs(title = "Rendimiento promedio por día de la semana (2020 - 2025)",
+       x = "Día de la semana", y = "Acción")
+```
+
+\newpage
+
+**Interpretación:**
+
+Este gráfico nos muestra el rendimiento logarítmico diario promedio (en
+porcentaje) para cada una de las 10 acciones, desglosado por cada uno de
+los días de la semana y abarcando el período de 2020 a 2025.
+
+Observando las columnas se identifican los **días** que históricamente
+han sido los **mejores para la inversión en estas acciones**, teniendo
+que:
+
+-   Para esta muestra y período de tiempo, el Lunes es el día con el
+    mayor número de rendimientos positivos altos, siendo el día más
+    verde. Dentro del cual, TSLA destaca con un impresionante 0.83% de
+    rendimiento promedio y NVDA con 0.29%.
+-   Asimismo, los días Martes y Miércoles, también muestran rendimientos
+    consistentemente positivos para la mayoría de las acciones, aunque
+    menores que el día Lunes. MSFT y NVDA muestran un rendimiento
+    particularmente bueno el Miércoles, con un rendimiento promedio del
+    0.21% cada una.
+-   Sin embargo, el día Jueves, resulta ser el día más débil, mostrando
+    la mayor concentración de rendimientos negativos. Para este día,
+    TSLA que venía teniendo un buen rendimiento los dias Lunes, muestra
+    una pérdida promedio del -0.24%.
+
+Por otro lado, también se observa el **rendimiento por acción**,
+observando que:
+
+-   TSLA (Tesla) presenta una alta volatilidad en los rendimientos
+    diarios de la semana. Pues tiene su mejor dia el Lunes (0.83%) y su
+    peor día el Jueves (-0.24%). Esto sugiere que el factor "Día de la
+    semana" tiene un efecto muy marcado para esta acción.
+-   NVDA (NVIDIA) muestra una fortaleza constante, tiene rendimientos
+    positivos todos los días, siendo el jueves su mejor día.
+-   AAPL (Apple) muestra su mejor rendimiento promedio el Lunes (0.23%)
+    mientras que el Jueves es negativo (-0.11%)
+
+### Bloxplots por día
+
+Bloxplots comparativos
+
+```{r boxplots-distribucion, fig.height=7, fig.cap="Distribución de rendimientos diarios por acción y día de la semana"}
+datos %>%
+  select(DiaSemana, ends_with(".Return")) %>%
+  pivot_longer(cols = ends_with(".Return"),
+               names_to = "Accion",
+               values_to = "Return") %>%
+  ggplot(aes(x = DiaSemana, y = Return, fill = DiaSemana)) +
+  geom_boxplot(outlier.alpha = 0.3) + 
+  facet_wrap(~gsub(".Return", "", Accion), scales = "free_y", ncol = 5) + 
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Distribución de Rendimientos por día",
+       x = "", y = "Rendimiento (%)")
+```
+
+\newpage
+
+**Interpretación:**
+
+Análisis de la Mediana (Rendimientos típicos):
+
+-   En general, para la mayoría de las acciones (AAPL, ADBE, AMZN, META,
+    MSFT, NVDA, ORCL), la mediana para todos los días de la semana está
+    muy cerca de cero (0%). Esto sugiere que, el rendimiento en un día "típico" de
+    trading, está ligeramente balanceado entre ganancias
+    y pérdidas.
+-   CRM (Salesforce): Muestra medianas ligeramente negativas para la
+    mayoría de los día, indicando una leve tendencia a la baja en el
+    rendimiento promedio.
+-   TSLA (Tesla) resulta ser la acción con las cajas más altas (medianas
+    superiores) y más anchas, indicando no solo mayor rendimiento sino
+    también mayor volatilidad.
+
+Así, si analizamos la Volatilidad y Riesgo, se observa:
+
+-   Mayor volatilidad para TSLA, NVDA, CRM, ORCL. Debido a que presentan
+    las cajas y bigotes más largos, traduciéndose en que sus
+    rendimientos diarios varían mucho. Y como se ha venido mencionando,
+    TSLA destaca por tener la mayor volatilidad general.
+-   Menor volatilidad para AAPL, GOOGL, AMZN. Estas acciones muestran
+    cajas más cortas, indicando que el 50% central de sus rendimientos
+    se encuentra en un rango más estrecho.
+
+Por otra parte, si nos centramos en el análisis del día jueves, se
+observa que la distribución de la mediana sigue estando cerca de cero,
+por lo que el promedio negativo, visible en el heatmap, probablemente se
+debe a los outliers muy bajos que se observan ese día para varías
+acciones (ej. ADBE o META)
+
+## Análisis de regresión para cada una de las acciones
+
+```{r regresiones-por-accion}
+regresion_por_accion <- function(datos, variable_return){
+  #Asegurando contrastes dummy
+  datos$DiaSemana <- factor(datos$DiaSemana,
+                            levels = c("lunes", "martes", "miércoles",
+                                       "jueves", "viernes"))
+  contrasts(datos$DiaSemana) <- contr.treatment(5)
+  
+  formula <- as.formula(paste(variable_return, "~DiaSemana"))
+  modelo <- lm(formula, data = datos)
+  return(tidy(modelo))
+}
+```
+
+De aquí en adelante, para la comprensión de los resultados se
+considerará:
+
+```{r regresiones-individuales, echo=FALSE}
+mapeo_dias <- tibble(
+  Dia_Semana_Número_term = 1:5,
+  Dia_Semana_Texto = c("lunes", "martes", "miércoles", "jueves", "viernes")
+)
+
+# Renderizar como una tabla formal de LaTeX (kable)
+mapeo_dias %>%
+  kable(
+    format = "latex", # Formato para renderizado a PDF
+    booktabs = TRUE,
+    caption = "Mapeo de Días de la Semana y sus Variables Dummy Asociadas",
+    col.names = c("Referencia Numérica de R", "Día de la Semana")
+  ) %>%
+  kable_styling(
+    latex_options = "hold_position", # Mantiene la tabla en la posición del texto
+    font_size = 10
+  )
+```
+
+```{r tabla-coeficientes}
+# Aplicando a todas las acciones
+resultados_individuales <- map_df(
+  acciones %>% gsub(".Close", ".Return", .),
+  ~regresion_por_accion(datos, .x) %>% mutate(Accion = gsub(".Return", "", .x))
+)
+
+# Filtrando solo los coeficientes de días (no intercepto)
+coefs_dias <- resultados_individuales %>%
+  filter(grepl("DiaSemana", term)) %>%
+  mutate(term = gsub("DiaSemana", "", term), 
+         significativo =  case_when(
+           p.value < 0.001 ~ "***",
+           p.value < 0.01 ~ "**",
+           p.value < 0.05 ~ "*",
+           p.value < 0.1 ~ ".",
+           TRUE ~ ""
+           ))
+coefs_dias %>%
+  select(Accion, term, estimate, std.error, p.value, significativo) %>%
+  arrange(Accion, term) %>%
+  print(n = 40)
+```
+
+
+Así, los coeficientes para cada uno de los modelos econométricos de cada acción son:
+
+```{r tabla-coeficientes_, echo=FALSE}
+
+modelos_completos <- map_df(
+  acciones %>% gsub(".Close", ".Return", .),
+  function(var_return) {
+    accion <- gsub(".Return", "", var_return)
+    modelo <- lm(as.formula(paste(var_return, "~ DiaSemana")), data = datos)
+    
+    coef_rob <- coeftest(modelo, vcov = vcovHC(modelo, type = "HC1"))
+    resultados <- tidy(coef_rob)
+    
+    stats <- glance(modelo)
+    
+    resultados %>%
+      mutate(
+        Accion = accion,
+        R_squared = stats$r.squared,
+        R_squared_adj = stats$adj.r.squared,
+        F_statistic = stats$statistic,
+        F_pvalue = stats$p.value
+      )
+  }
+)
+```
+
+
+```{r tabla-coeficientes2, echo=FALSE}
+tabla_coeficientes <- modelos_completos %>%
+  select(Accion, term, estimate, p.value) %>%
+  mutate(
+    coef_sig = paste0(
+      round(estimate, 4),
+      case_when(
+        p.value < 0.001 ~ "***",
+        p.value < 0.01 ~ "**",
+        p.value < 0.05 ~ "*",
+        TRUE ~ ""
+      )
+    ),
+    term = case_when(
+      term == "(Intercept)" ~ "Intercepto_Lunes",
+      term == "DiaSemana2" ~ "Martes",
+      term == "DiaSemana3" ~ "Miercoles",
+      term == "DiaSemana4" ~ "Jueves",
+      term == "DiaSemana5" ~ "Viernes",
+      TRUE ~ term
+    )
+  ) %>%
+  select(Accion, term, coef_sig) %>%
+  pivot_wider(names_from = term, values_from = coef_sig)
+
+tabla_coeficientes
+```
+
+
+```{r grafico-coeficientes, fig.height=6, fig.cap="Diferencia de rendimiento estimada vs. Lunes con intervalos de confianza al 95 por ciento"}
+# Gráfico de coeficientes con barras de error y significancia
+ggplot(coefs_dias, aes(x = term, y = estimate, fill = p.value < 0.05)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray40", linewidth = 0.8) +
+  geom_col(position = "dodge", alpha = 0.8) +
+  geom_errorbar(aes(ymin = estimate - 1.96*std.error, 
+                    ymax = estimate + 1.96*std.error),
+                width = 0.2, alpha = 0.6) +
+  geom_text(aes(label = significativo), 
+            vjust = -0.5, size = 5, fontface = "bold") +
+  facet_wrap(~Accion, ncol = 5) +
+  scale_fill_manual(values = c("gray60", "turquoise1"),
+                    labels = c("No significativo", "p < 0.05"),
+                    name = "") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom"
+  ) +
+  labs(
+    title = "Diferencia de rendimiento vs. Lunes (línea base = 0)",
+    subtitle = "Barras = coeficiente estimado | Líneas = IC 95% | 
+    Asteriscos = significancia",
+    x = "Día de la semana", 
+    y = "Diferencia en rendimiento (%)",
+    caption = "* p<0.05, ** p<0.01, *** p<0.001"
+  )
+```
+
+\newpage
+
+# Hallazgos significativos
+
+```{r tabla-hallazgos}
+# Identificar efectos significativos
+hallazgos_significativos <- coefs_dias %>%
+  filter(p.value < 0.05) %>%
+  arrange(p.value) %>%
+  select(Accion, term, estimate, p.value) %>%
+  mutate(
+    Interpretacion = paste0(
+      "El día", term, " tiene un rendimiento ",
+      ifelse(estimate > 0, "MAYOR", "MENOR"),
+      " que el lunes en ",
+      round(abs(estimate), 3), " puntos porcentuales"
+    )
+  )
+
+hallazgos_significativos %>%
+  kable(
+    format = "latex",
+    booktabs = TRUE,
+    caption = "Hallazgos Significativos por Día de la Semana",
+    col.names = c("Acción", "Día", "Estimación", "P-valor", "Interpretación"),
+    digits = c(0, 0, 4, 4, 0)
+  ) %>%
+  kable_styling(
+    latex_options = c("scale_down", "hold_position"),
+    font_size = 9
+  ) %>%
+  column_spec(5, width = "6cm")
+```
+
+**Interpretación:**
+
+La única acción con efectos estadísticamente significativos es TSLA, que
+se presenta el Jueves (Día 4) con un rendimiento 1.07 puntos
+porcentuales menos que el Lunes; y el Viernes (día 5) con un rendimiento
+de 0.82 puntos porcentuales por debajo del Lunes.
+
+De esta manera, si el Lunes TSLA rinde en promedio +0.83% (de acuerdo al
+heatmap), el jueves rendirá 0.83% - 1.07% = -0.24%, y el viernes rendirá
+0.83% - 0.82% = +0.01%, coincidiendo, para ambos casos, con el mismo
+heatmap.
+
+Para las otras 9 acciones, no se reportan efectos estadísticamente
+significativos (todos los p-valores son mayores a 0.05). De manera que
+los patrones observados en el heatmap podrían tratarse de ruido
+estadístico.
+
+# Análisis de Resumen por acción
+
+```{r tabla-resumen_accion}
+
+resumen_por_accion <- coefs_dias %>%
+  group_by(Accion) %>%
+  summarise(
+    Mejor_Dia = term[which.max(estimate)],
+    Mejor_Coef = round(max(estimate), 3),
+    Peor_Dia = term[which.min(estimate)],
+    Peor_Coef = round(min(estimate), 3),
+    Rango_Efecto = round(max(estimate) - min(estimate), 3),
+    N_Significativos = sum(p.value < 0.05),
+    Dias_Significativos = paste(term[p.value < 0.05], collapse = ", ")
+  ) %>%
+  arrange(desc(N_Significativos), desc(Rango_Efecto))
+
+resumen_por_accion
+```
+
+**Interpretación:**
+
+-   TSLA resulta ser la única acción con 2 días significativos. Con un
+    rango de efecto de 0.442 puntos porcentuales (pp) confirmando su
+    alta volatilidad semanal.
+-   NVDA, ORCL, AAPL cuentan con rangos moderados (0.26 - 0.31 pp).
+    Estas acciones no son significativas por lo que los patrones podrían
+    ser causales.
+-   CRM es la acción con menor rango (0.083 pp). Su rendimiento es muy
+    estable, así, el "día de la semana" no importa para CRM.
+
+```{r conclusion-significancia, echo=FALSE}
+conclusion_significancia <- tibble(
+  Accion = c("TESLA (TSLA)", "TESLA (TSLA)", "Otras 9 Acciones"),
+  Dia_Comparado = c("Jueves vs. Lunes", "Viernes vs. Lunes", "Todos los días"),
+  Efecto_vs_Lunes = c("-1.07 pp", "-0.82 pp", "No Significativo"),
+  Significancia = c("p = 0.004 **", "p = 0.029 *", "p > 0.05"),
+  Interpretacion = c("Rendimiento 1.07 pp menor que el lunes.",
+                     "Rendimiento 0.82 pp menor que el lunes.",
+                     "El día de la semana no afecta el rendimiento.")
+)
+
+conclusion_significancia %>%
+  kable(
+    format = "latex",
+    booktabs = TRUE,
+    caption = "Resumen de Significancia Estadística por Acción",
+    col.names = c("Acción", "Comparación", "Efecto", "Significancia", "Interpretación"),
+    align = c("l", "l", "c", "c", "l")
+  ) %>%
+  kable_styling(
+    latex_options = c("scale_down", "hold_position", "striped"),
+    font_size = 10
+  ) %>%
+  column_spec(1, width = "3cm", bold = TRUE) %>%
+  column_spec(5, width = "5.5cm") %>%
+  row_spec(0, bold = TRUE)
+```
+
+De esta manera, esto sugiere que el "Efecto día de la semana" no se
+trata de un fenómeno generalizado en el sector tecnológico, sino más
+bien específico de acciones con alta volatilidad como TESLA. Para esta
+acción, invertir el día jueves y el viernes resulta en un rendimiento
+promedio significativamente menor al del lunes, lo que sugiere que el
+lunes sigue siendo el día más conveniente para invertir en TSLA dentro
+de esta muestra. El patrón no se replica en las demás acciones
+tecnológicas analizadas.
+
+# Diagnósticos para verificar la validez del modelo
+
+### Diagnósticos para todas las acciones
+
+```{r diagnosticos-completos}
+diagnosticos_todas <- map_df(
+  acciones %>% gsub(".Close", ".Return", .),
+  function(var_return) {
+    accion <- gsub(".Return", "", var_return)
+    modelo <- lm(as.formula(paste(var_return, "~ DiaSemana")), data = datos)
+    
+    # Heterocedasticidad (Breusch-Pagan)
+    bp <- bptest(modelo)
+    
+    #Autocorrelación (Durbin-Watson)
+    dw <- dwtest(modelo)
+    
+    # Prueba F
+    f_stat <- glance(modelo)
+    
+    # Coeficientes con errores estándar robustos (HC1)
+    coef_rob <- coeftest(modelo, vcov = vcovHC(modelo, type = "HC1"))
+    
+    # Se extraen los p-values de los días con errores robustos
+    p_robustos <- tidy(coef_rob) %>%
+      filter(grepl("DiaSemana", term)) %>%
+      summarise(min_pvalue_robusto = min(p.value))
+    
+    return(tibble(
+      Accion = accion,
+      
+      # Heterocedasticidad
+      Heteroced_pval = bp$p.value,
+      Heteroced = ifelse(bp$p.value < 0.05, "SÍ", "NO"),
+      # Autocorrelación
+      DW_stat = as.numeric(dw$statistic),
+      Autocorr = case_when(
+        dw$statistic < 1.5 ~ "Positiva",
+        dw$statistic > 2.5 ~ "Negativa",
+        TRUE ~ "NO"
+      ),
+      
+      # Significancia global
+      F_pval = f_stat$p.value,
+      Modelo_significativo = ifelse(f_stat$p.value < 0.05, "SÍ", "NO"),
+      # Mínimo p-valor con errores robustos
+      Min_pval_robusto = p_robustos$min_pvalue_robusto,
+      Algún_dia_significativo_robusto = ifelse(p_robustos$min_pvalue_robusto < 0.05,
+                                               "SÍ","NO")
+    ))
+  }
+)
+
+# Ordenar por significancia
+diagnosticos_todas <- diagnosticos_todas %>%
+  arrange(Min_pval_robusto)
+
+diagnosticos_todas
+
+```
+
+**Interpretación:**
+
+-   Heterocedasticidad:
+
+Para las acciones TSLA, ADBE, GOOGL, AMZN, META se observa un problema
+de heterocedasticidad dado que el p-valor es bajo (p \< 0.05), violando
+el supuesto de homocedasticidad (varianza constante).
+
+-   Autocorrelación:
+
+Dado que los valores de DW de todas las acciones son cercanos a 2, se
+cumple el supuesto de independencia de los errores.
+
+-   Significancia global del modelo (Prueba F):
+
+Con esta prueba se busco conocer si, en conjunto, las variables del día
+de la semana explicaban una parte significativa de la variación en el
+rendimiento observándose que, para todas las acciones, todos los
+p-valores de las prueba F resultaron ser mayores a 0.05, concluyendo con
+esto que, incluso para la acción TSLA (p = 0.0638) donde el efecto es
+más fuerte, el modelo completo, es decir, los 4 días juntos, no es
+estadísticamente significativo al nivel del 5%.
+
+-   Significación robusta (Corrección por Heterocedasticidad):
+
+Después de corregir los errores estándar por heterocedasticidad, se
+observa que, la única acción con Efecto Válido
+(Algún_dia_significativo_robusto) fue TSLA, con un p-valor de 0.0107 que
+es menor a 0.05. Así, aunque el Test F fue débil, la conclusión sobre
+TSLA sigue siendo válida: la diferencia en el rendimiento de un día
+específico (el más bajo) es estadísticamente significativa incluso
+después de corregir la heterocedasticidad.
+
+Sin embargo, para todas las demás acciones, el p-valor robusto fue mayor
+a 0.05, confirmando que las diferencias entre los días de la semana no
+resultan ser estadísticamente significativas.
+
+
+
+\newpage
+
+# Conclusiones
+
+## Hallazgos
+
+Para cada una de las acciones analizadas, sus respectivos coeficientes 
+son:
+
+\begin{table}[H]
+    \centering
+    \caption{Estimaciones de Coeficientes del Efecto Día de la Semana}
+    \label{tab:coeficientes_regresion}
+    \begin{tabular}{l c c c c c}
+        \toprule
+        \textbf{Acción} & \textbf{Lunes ($\alpha$)} & \textbf{Martes ($\beta_M$)} & \textbf{Miércoles ($\beta_{Mi}$)} & \textbf{Jueves ($\beta_J$)} & \textbf{Viernes ($\beta_V$)} \\
+        \midrule
+        MSFT & 0.0257 & 0.0299 & 0.187 & -0.0569 & 0.0253 \\
+        AAPL & 0.2273 & -0.0732 & -0.1579 & -0.3419 & -0.175 \\
+        GOOGL & 0.0227 & 0.1158 & 0.074 & -0.0205 & 0.0103 \\
+        AMZN & 0.0784 & 0.0559 & 0.0373 & -0.1156 & -0.1316 \\
+        META & 0.0741 & 0.0638 & 0.0568 & -0.1398 & -0.001 \\
+        NVDA & 0.2925 & -0.0418 & -0.0858 & 0.0251 & -0.283 \\
+        ADBE & 0.131 & -0.0325 & -0.1703 & -0.2568 & -0.1506 \\
+        CRM & 0.0507 & -0.0700 & 0.0131 & -0.0365 & 0.0032 \\
+        ORCL & 0.0418 & 0.0117 & 0.0532 & -0.1039 & 0.1823 \\
+        TSLA & $0.8288^{**}$ & -0.6309 & -0.717 & $\mathbf{-1.0725^{**}}$ & $\mathbf{-0.8222^{*}}$ \\
+        \bottomrule
+    \end{tabular}
+
+    % Bloque de nota mejorado
+    \vspace{0.2cm}
+    \begin{minipage}{\linewidth} % Utiliza el ancho completo del texto
+        \raggedright
+        \footnotesize
+        \textbf{Nota:} Los valores representan el rendimiento logarítmico diario promedio (en \%). El coeficiente de Lunes ($\alpha$) es el intercepto. Los coeficientes de Martes a Viernes ($\beta$) son las diferencias respecto al Lunes. \\
+        Significancia estadística: $^{*}\ p < 0.05$, $^{**}\ p < 0.01$. (Basado en los asteriscos provistos en los datos originales).
+    \end{minipage}
+\end{table}
+
+A partir de los resultados del modelo de regresión lineal múltiple con
+variables dummies, analizados a partir de errores estándar robustos a
+heterocedasticidad, se sostiene que la Hipótesis Nula de igualdad de
+retornos promedio entre los días de la semana no puede rechazarse para 9
+de las 10 acciones tecnológicas. Esto da pauta a sugerir que el conocido
+**Efecto Dia de la Semana** no resulta ser un factor determinante para
+el trading en estas acciones de NASDAQ/NYSE durante el periodo 2020-2025
+
+Por otra parte, se destaca la excepción que confirma que el análisis ha
+sido valioso. La unica excepción a este hallazgo general es la acción de
+Tesla (TSLA). Pues para este activo, se observa un **Efecto de fin de
+semana negativo** el cual es altamente significativo, en los cuales, los
+retornos promedio de los Jueves (significativamente 1.07% menores que el
+Lunes) y los Viernes (significativamente 0.82% menores que el Lunes) son
+estadísticamente inferiores al retorno promedio del día de referencia.
+Este resulta ser un dato crucial para cualquier estrategia de inversión
+en TSLA.
+
+```{r}
+#| fig-width: 8
+# Enfoque en TSLA con anotaciones
+tsla_coefs <- coefs_dias %>% filter(Accion == "TSLA")
+
+ggplot(tsla_coefs, aes(x = term, y = estimate)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red", linewidth = 1) +
+  geom_col(aes(fill = p.value < 0.05), alpha = 0.8, width = 0.6) +
+  geom_errorbar(aes(ymin = estimate - 1.96*std.error, 
+                    ymax = estimate + 1.96*std.error),
+                width = 0.3, linewidth = 1) +
+  geom_text(aes(label = paste0(round(estimate, 2), 
+                               ifelse(p.value < 0.05, "**", ""))),
+            vjust = -0.5, size = 5, fontface = "bold") +
+  scale_fill_manual(values = c("gray70", "firebrick"),
+                    labels = c("No significativo (p > 0.05)", "Significativo (p<0.05)"),
+                    name = "") +
+  scale_x_discrete(labels = c("2" = "Martes", "3" = "Miércoles", 
+                              "4" = "Jueves", "5" = "Viernes")) +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "bottom") +
+  labs(
+    title = "TESLA: Efecto Día de la Semana vs. Lunes (2020-2025)",
+    subtitle = "Única acción con efectos estadísticamente significativos",
+    x = "", 
+    y = "Diferencia de rendimiento vs. Lunes (puntos porcentuales)",
+    caption = "Barras de error = IC 95% | ** p < 0.05")
+
+```
+
+
+```{r tabla-conclusiones_final, echo=FALSE}
+conclusiones_resumen <- data.frame(
+  Pregunta = c(
+    "¿Existe un 'Efecto Lunes' de alto retorno?",
+    "¿Existe un Mejor Día General para invertir?",
+    "¿Cuál es la recomendación de inversión?"
+  ),
+  Respuesta = c(
+    "NO. El retorno promedio del Lunes (Retorno Promedio Lunes (%)) no es significativamente diferente de los demás días, excepto en TSLA, donde el Lunes es significativamente mejor que el Jueves y Viernes.",
+    "NO. No hay ningún día (Martes, Miércoles, Jueves o Viernes) que muestre un coeficiente positivo y significativo para la mayoría de las acciones.",
+    "Para 9 de 10 acciones, el día de la semana no debería ser un factor en la decisión de trading, ya que las diferencias no son significativas. Sin embargo, para TSLA, se recomendaría evitar realizar grandes transacciones los Jueves y Viernes, ya que son días de retornos significativamente más bajos."
+  ),
+  stringsAsFactors = FALSE
+)
+
+kable(conclusiones_resumen,
+      booktabs = TRUE,
+      caption = "Resumen de Hallazgos y Recomendaciones de Inversión",
+      col.names = c("Pregunta", "Respuesta basada en los datos"),
+      align = c('l', 'l'))
+```
+
+## Verificación de hipótesis
+
+A partir de los resultados del modelo de regresión lineal múltiple con
+variables dummies, se constata que, la hipótesis de efecto "Día de la
+semana" se confirma únicamente para 1 de las 10 acciones
+(especificamente TSLA). Siendo el día Lunes significativamente mejor que
+el Jueves y Viernes para esta acción.
+
+\newpage
+
+# Referencias
+
+-   Xu, J. (2016). *Practical Quantitative Finance with R: Solving
+    Real-World Problems with R for Quant Analysts and Individual
+    Traders*. UNICAD.
+-   French, D. (1980). *Stock returns and the weekend effect*. Journal
+    of Financial Economics, 8(1), 55–69.
+    [https://doi.org/10.1016/0304-405X(80)90021-5](https://doi.org/10.1016/0304-405X(80)90021-5){.uri}
+-   Daróczi, G., Puhle, M., Berlinger, E., Csóka, P., Havran, D., Illés,
+    F., Makara, T., Michaletzky, M., Tulassay, Z., Kata, V., &
+    Vidovics-Dancs, Á. (2013). *Introduction to R for quantitative
+    finance*. Packt Publishing.
+-   Kristjanpoller, W., & Muñoz, R. E. (2012). *Análisis del Efecto Día
+    de Semana en los principales mercados accionarios latinoamericanos:
+    una aproximación mediante el criterio de Dominancia Estocástica.*
+    Estudios de EconomíA, 39(1), 5-26. https://doi.org/10.4067/s0718-52862012000100001
+-   Gujarati, D. N., & Porter, D. C. (2010). *Econometría (5ta. edición ed.)*. McGraw-Hill
+-   Evans, R. (s.f.). *Understanding the Importance of p-values in Econometrics.* econometricstutor.co.uk. https://www.econometricstutor.co.uk/hypothesis-testing-p-values
+
