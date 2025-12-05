@@ -1,0 +1,436 @@
+---
+title: "Proyecto Final Estadistica Aplicada"
+subtitle: "Analisis Estadistico de Género del Grupo de Tercer año de Secundaría del Instituto Valverde y Tellez"
+format: 
+  html:
+    grid: 
+      body-width: 1000px
+editor: visual
+author: "Luz Elvira Soto Rodríguez"
+---
+
+```{=html}
+<style>
+main.content {
+text-align: justify}
+</style>
+```
+
+```{r}
+#Toda la librería necesaria 
+#| code-fold: true
+#| message: false
+#| warning: false
+library(readxl)
+library(dplyr)
+library(pROC)
+library(caret)
+library(margins)
+library(logistf)
+library(scales)
+library(ggplot2)
+```
+
+# Introducción
+
+***“Aplicación de un modelo econométrico para predecir la proporción de estudiantes de secundaria de la entidad educativa privada Valverde y Téllez que obtendrán su carta de buena conducta”***
+
+Nombre de un análisis anterior para un proyecto intermedio de la materia de Econometría, donde nuestro objetivo era tomar la variable independiente de *Conducta* dada en la evaluación *Diagnostica* de un grupo de tercer año de una institución privada de nombre Instituto Valverde y Téllez. Tomando otras variables como la calificación de las materias contempladas por la SEG (Secretaría de Educación de Guanajuato) y el promedio de estas: para ver si había algún tipo de supuesto en quienes de nuestra muestra iban a salir de la secundaría con una carta de buena conducta.
+
+Tras la aplicación de un modelo de regresión, regresión múltiple, curva de ROC y una matriz de confusión. Llegamos a la conclusión de que teníamos un sesgo de error tan grande, que el modelo no funcionaba. Mostraba una exactitud del 100% en los resultados, que significa que su error es muy grande.
+
+Si bien el **Estado de Guanajuato** si tiene un problema con porcentaje de desertores de la educación básica que es el paso entre Secundaría y Preparatoria, no es concluyente la conducta de este periodo en particular y su promedio para saber esto. Aparte que nos faltaban demasiadas variables que no deben estar en un concentrado de calificaciones como la asistencia, expediente de reportes y tratando de adolescentes a veces análisis psicológicos personales para saber el porque de su conducta.
+
+Ahora se intentará tomar la base de datos, corregida y en su mayoría completa, y se tomará el primer bimestre de evaluación (Periodo que abarca los meses de Octubre y Noviembre). Se agregarán datos como su edad y su género, y se seccionarán los datos en base a esto.
+
+# Hipotesis
+
+Las mujeres dentro del grupo en su mayoría abarcarán los promedios más altos y calificaciones más consistentes
+
+# Objetivo
+
+Muestreo de datos de nuestra población, primero de manera general y en segunda instancia la separación de género con datos como su Promedio y su Conducta. En busca de una consistencia.
+
+# Marco Teoríco
+
+::: {#Promedio_SEG}
+Trabajamos con una base de datos de una institución privada, pueden agregar materias que no se contemplan en este promedio (que es un resultado del trabajo aplicado y del aprendizaje del alumnado). Materias como **S_E** o *Socio-Emocional*, **LECT** que es *Taller de Lectura*. Que sus critarios de evaluación no estan en el panorama de la Dirección de Educación de Gto.
+
+```{r}
+estructura_materias <- data.frame(
+  Clasificación = c(
+    "Lenguaje", "Lenguaje", "Lenguaje",
+    "Pensamiento cientifico", "Piensamiento  Cientifico",
+    "Naturaleza y Sociedades", "Naturaleza y Sociedades",
+    "Humano y Comunitario", "Humano y Comunitario"
+  ),
+  
+  Materia_Obligatoria = c(
+    "Español",
+    "Artes",
+    "Ingles",
+    "Guímica",
+    "Matematicas",
+    "Civica y Ética",
+    "Historia",
+    "Educación Física ",
+    "Tecnología"
+  )
+)
+
+print(estructura_materias)
+```
+:::
+
+::: {#def-regresion}
+El **análisis de regresión** estudia la dependencia entre una variable dependiente respecto de una o más variables explicativas para poder estimar o predecir la media poblacional de la variable dependiente en términos de valores conocidos en muestras repetidas de la variable explicativa.
+
+*Análisis de regresión simple o con dos variables:* Estudio de la dependencia de una variable respecto de una única variable explicativa.
+
+$$
+Y = \beta_0 + \beta_1X_1 + \upsilon
+$$
+
+*Análisis de regresión múltiple:* Estudio de la dependencia de una variable respecto de más de una variable explicativa.
+
+$$
+Y = \beta_0 + \beta_1X_1 + \beta_2X_2 + \beta_3X_3 + ... + \beta_nX_n + \upsilon
+$$
+:::
+
+::: {#def-modelo-logit}
+El **modelo logit** es un modelo de regresión utilizado para explicar relaciones causales entre una variable dependiente categórica y otras variables independientes categóricas o cuantitativas. Se puede predecir la probabilidad de que ocurra un hallazgo en función de las variables relevantes.
+
+$$y_i = X_i\beta + \upsilon_i$$ Donde $Y$ solo toma valores de $[0,1]$.
+:::
+
+# Metodología
+
+## Cargamos nuestras base de datos
+
+```{r}
+Bimestre_2 <- read_excel("PF_Bimestre(Oct-Nov).xlsx")
+Diagnostico <- read_excel("PF_Bimestre(Ago-Sep).xlsx")
+colnames(Diagnostico) <- c("NL", "Nombre", "Español", "Artes", "Ingles", "Matematicas","Quimica", "C_y_E", "Historia", "E_F", "Tecno", "Promedio", "Formacion", "I_C", "S_E", "Lectura", "Conducta", "Edad", "Genero")
+colnames(Bimestre_2) <- c("NL", "Nombre", "Español", "Artes", "Ingles", "Matematicas","Quimica", "C_y_E", "Historia", "E_F", "Tecno", "Promedio", "Formacion", "I_C", "S_E", "Lectura", "Conducta", "Edad", "Genero")
+```
+
+```{r}
+head(Diagnostico)
+```
+
+```{r}
+head(Bimestre_2)
+```
+
+```{r}
+n_estudiantes <- nrow(Diagnostico)
+cat("Numero de estudiantes", n_estudiantes)
+table(Diagnostico$Genero)
+Diagnostico$Genero_2 <- ifelse(
+  Diagnostico$Genero == "F", 1, 0
+)
+Bimestre_2$Genero_2 <- ifelse(
+  Bimestre_2$Genero == "F", 1, 0
+) 
+```
+
+## Aterrizamos la división del grupo Basado en el Genero
+
+```{r}
+datos_pastel <- Diagnostico %>%
+  count(Genero_2) %>%                     
+  rename(Frecuencia = n) %>%
+  mutate(
+    Proporcion = Frecuencia / sum(Frecuencia), 
+    Porcentaje = paste0(round(Proporcion * 100, 1), "%"), 
+    Posicion_Texto = cumsum(Proporcion) - Proporcion/2
+  )
+
+ggplot(datos_pastel, aes(x = "", y = Proporcion, fill = Genero_2)) +
+  geom_bar(stat = "identity", width = 1, color = "white") +
+  coord_polar("y", start = 0) +
+  geom_text(aes(y = Posicion_Texto, label = Porcentaje), color = "black", size = 4) +
+  labs(
+    title = "División de Genero dentro del Grupo de 3ero",
+    fill = "%" 
+  ) +
+  theme_void()
+```
+
+```{r}
+datos_pastel_2 <- Diagnostico %>%
+  count(Edad) %>%                     
+  rename(Frecuencia = n) %>%
+  mutate(
+    Proporcion = Frecuencia / sum(Frecuencia), 
+    Porcentaje = paste0(round(Proporcion * 100, 1), "%"), 
+    Posicion_Texto = cumsum(Proporcion) - Proporcion/2
+  )
+
+ggplot(datos_pastel_2, aes(x = "", y = Proporcion, fill = Edad)) +
+  geom_bar(stat = "identity", width = 1, color = "white") +
+  coord_polar("y", start = 0) +
+  geom_text(aes(y = Posicion_Texto, label = Porcentaje), color = "black", size = 4) +
+  labs(
+    title = "División de Edades dentro del Grupo de 3ero",
+    fill = "Años" 
+  ) +
+  theme_void()
+```
+
+## Modelo de Regresión Logistica por periodo
+
+```{r}
+
+model_logit_b1 <- logistf (Genero_2 ~ Español + Artes + Ingles + Matematicas + Quimica + C_y_E + Historia + E_F + Tecno, data = Diagnostico)
+
+summary(model_logit_b1)
+```
+
+```{r}
+model_logit_b2 <- logistf (Genero_2 ~ Español + Artes + Ingles + Matematicas + Quimica + C_y_E + Historia + E_F + Tecno, data = Bimestre_2)
+
+summary(model_logit_b2)
+```
+
+# Histograma (Entre Diagnostico y Primer Bimestre)
+
+```{r}
+tabla_D_mujeres <- Diagnostico %>%
+  filter(Genero_2 == 1) %>%
+  select(Nombre, Promedio, Conducta)
+
+tabla_B2_mujeres <- Bimestre_2 %>%
+  filter(Genero_2 == 1) %>%
+  select(Nombre, Promedio, Conducta)
+
+```
+
+```{r}
+head(tabla_D_mujeres)
+```
+
+```{r}
+head(tabla_B2_mujeres)
+```
+
+```{r}
+Promedio <- tabla_B2_mujeres$Promedio_2
+promedio <- tabla_B2_hombres$Promedio_2
+hist(Promedio,
+     main = "Promedio Bimestral Unicamente de las Mujeres", 
+     col = "#CD1076", 
+     xlab = "Promedio"
+  )
+```
+
+```{r}
+tabla_D_hombres <- Diagnostico %>%
+  filter(Genero_2 == 0) %>%
+  select(Nombre, Promedio, Conducta)
+
+tabla_B2_hombres <- Bimestre_2 %>%
+  filter(Genero_2 == 0) %>%
+  select(Nombre, Promedio, Conducta)
+
+```
+
+```{r}
+head(tabla_D_hombres)
+```
+
+```{r}
+head(tabla_B2_hombres)
+```
+
+```{r}
+hist(promedio,
+     main = "Promedio Bimestral Unicamente de los Hombres",
+     col = "lightblue", 
+     xlab = "Promedio"
+     )
+```
+
+# Analisis de Correlación
+
+```{r}
+#| code-fold: true
+colnames(tabla_B2_hombres) <- c("Nombre", "Promedio_2", "Conducta_2")
+colnames(tabla_B2_mujeres) <- c("Nombre", "Promedio_2", "COnducta_2")
+
+datos_M <- left_join(tabla_D_hombres, tabla_B2_hombres)
+datos_F <- left_join(tabla_D_mujeres, tabla_B2_mujeres)
+```
+
+## Q-Q Plot (comparación de cuantiles)
+
+### Hombres
+
+```{r}
+ggplot(data = datos_M, aes(sample = Promedio)) +
+  stat_qq(color = "#551A8B", size = 2, alpha = 0.7) +
+  stat_qq_line(color = "#528B8B", linewidth = 1, linetype = "dashed") +
+  scale_x_continuous(name = "Cuantiles Teóricos (Distribución Normal)",
+                     breaks = pretty_breaks(n = 6)) +
+  scale_y_continuous(name = "Cuantiles Muestrales (Promedio)",
+                     breaks = pretty_breaks(n = 6),
+                     labels = function(x) paste(x, "años")) +
+  labs(title = "Gráfico Q-Q para Normalidad",
+       subtitle = "Promedio - Hombres") +
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+                                      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+```
+
+### Mujeres
+
+```{r}
+ggplot(data = datos_F, aes(sample = Promedio)) +
+  stat_qq(color = "#551A8B", size = 2, alpha = 0.7) +
+  stat_qq_line(color = "#528B8B", linewidth = 1, linetype = "dashed") +
+  scale_x_continuous(name = "Cuantiles Teóricos (Distribución Normal)",
+                     breaks = pretty_breaks(n = 6)) +
+  scale_y_continuous(name = "Cuantiles Muestrales (Promedio)",
+                     breaks = pretty_breaks(n = 6),
+                     labels = function(x) paste(x, "años")) +
+  labs(title = "Gráfico Q-Q para Normalidad",
+       subtitle = "Promedio - Mujeres") +
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+                                      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+```
+
+## Boxplot (Mediana)
+
+### Mujeres
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(data = datos_F, aes(x = Promedio, y = Promedio_2)) +
+    geom_boxplot(
+    fill = "#AB82FF",           # Color de relleno
+    color = "#DA70D6",          # Color del borde más oscuro
+    alpha = 0.8,                # Transparencia
+    outlier.color = "#E74C3C",  # Color rojo para outliers
+    outlier.size = 2.5,         # Tamaño de outliers
+    outlier.alpha = 0.7,        # Transparencia de outliers
+    width = 0.5,                # Ancho del boxplot
+    notch = TRUE,               # Muescas para intervalo de confianza
+    notchwidth = 0.7            # Ancho de las muescas
+  ) +
+  geom_jitter(alpha = 0.3, color = "#5D478B", size = 1.5, width = 0.1) +
+  scale_y_continuous(breaks = pretty_breaks(n = 8), labels = function(x) paste(x, "")) +
+  labs(title = "Distribución del Promedio entre Periodos (mediana)", 
+  subtitle = "Grado de Tercero de secundaría (Mujeres)",
+  y = "Promedio_Bimestral",
+  x = "Promedio_Diagnostico")+
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+
+```
+
+### Hombres
+
+```{r}
+#| code-fold: true
+#| fig-width: 7
+#| fig-align: center
+
+ggplot(data = datos_M, aes(x = Promedio, y = Promedio_2)) +
+    geom_boxplot(
+    fill = "#AB82FF",           # Color de relleno
+    color = "#DA70D6",          # Color del borde más oscuro
+    alpha = 0.8,                # Transparencia
+    outlier.color = "#E74C3C",  # Color rojo para outliers
+    outlier.size = 2.5,         # Tamaño de outliers
+    outlier.alpha = 0.7,        # Transparencia de outliers
+    width = 0.5,                # Ancho del boxplot
+    notch = TRUE,               # Muescas para intervalo de confianza
+    notchwidth = 0.7            # Ancho de las muescas
+  ) +
+  geom_jitter(alpha = 0.3, color = "#5D478B", size = 1.5, width = 0.1) +
+  scale_y_continuous(breaks = pretty_breaks(n = 8), labels = function(x) paste(x, "")) +
+  labs(title = "Distribución del Promedio entre Periodos (mediana)", 
+  subtitle = "Grado de Tercero de secundaría (Hombres)",
+  y = "Promedio_Bimestral",
+  x = "Promedio_Diagnostico")+
+  theme_bw()+
+  theme(
+    legend.title = element_text(size=13, face="bold"),
+    legend.text = element_text(size=13),
+    plot.title = element_text(size=15, face="bold"),
+    plot.subtitle = element_text(size=13),
+    axis.text.x=element_text(size=12),
+    axis.text.y=element_text(size=12),
+    axis.title.x = element_text(face="bold", size=13),
+    axis.title.y = element_text(face="bold", size=13),
+    panel.grid.major.y = element_line(color = "#ECF0F1", linewidth = 0.5,
+      linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.background = element_rect(fill = "#FAFAFA", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+
+```
+
+# Conclusiones
+
+Este nuevo enfoque se centra en la relación entre el Género y el Rendimiento Académico mediante la aplicación de un Modelo de Regresión Logística. Esta elección metodológica es apropiada al tratar con una variable dependiente de naturaleza binaria (Género), lo que permite mitigar los problemas de sesgo intrínsecos al enfoque previo.
+
+Además, la integración de variables demográficas clave como la Edad y el Género en la base de datos facilita una exploración más detallada de la población de estudio. Si bien el modelo actual se enfoca en el género, la disponibilidad de estos datos abre la puerta a futuras investigaciones que podrían abordar:
+
+-   Análisis por Cohorte de Edad
+
+-   Historial Educativo (considerando estudiantes repetidores)
+
+-   Incidentes de Conducta registrados.
+
+Si bien los resultados iniciales muestran una asociación incipiente que justifica la hipótesis, se concluye que el modelo es metodológicamente sólido para la variable binaria estudiada. La falta de una significancia estadística contundente ($P > 0.6$) indica la necesidad de refinar el modelo, quizás incluyendo la variable Edad y explorando la posible correlación entre las materias antes de extraer conclusiones definitivas.
